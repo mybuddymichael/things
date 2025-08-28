@@ -19,17 +19,22 @@ func main() {
 		Name:    "things",
 		Version: version,
 		Usage:   "Interact with Things.app from the command line.",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        "list",
-				Aliases:     []string{"l"},
-				Usage:       "show to-dos from the specified `list`",
-				Required:    true,
-				Destination: &listName,
-			},
-		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			jxaScript := fmt.Sprintf(`
+		Commands: []*cli.Command{
+			{
+				Name:    "show",
+				Usage:   "Show to-dos from a specified list",
+				Aliases: []string{"s"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "list",
+						Aliases:     []string{"l"},
+						Usage:       "show to-dos from the specified `list`",
+						Required:    true,
+						Destination: &listName,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					jxaScript := fmt.Sprintf(`
 try {
     var app = Application('Things3');
     var list = app.lists.byName('%s');
@@ -47,24 +52,25 @@ try {
 }
 `, listName, listName)
 
-			execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
-			output, err := execCmd.Output()
-			if err != nil {
-				log.Fatalf("Error running JXA script: %v", err)
-			}
+					execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
+					output, err := execCmd.Output()
+					if err != nil {
+						log.Fatalf("Error running JXA script: %v", err)
+					}
 
-			outputStr := string(output)
-			if len(outputStr) > 0 && outputStr[:6] == "ERROR:" {
-				fmt.Print(outputStr)
-				fmt.Println("Use `things list` to see available lists.")
-				os.Exit(1)
-			}
+					outputStr := string(output)
+					if len(outputStr) > 0 && outputStr[:6] == "ERROR:" {
+						fmt.Print(outputStr)
+						fmt.Println("Use `things list` to see available lists.")
+						os.Exit(1)
+					}
 
-			fmt.Print(outputStr)
-			return nil
+					fmt.Print(outputStr)
+					return nil
+				},
+			},
 		},
 	}
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		log.Fatal(err)
-	}
+
+	cmd.Run(context.Background(), os.Args)
 }
