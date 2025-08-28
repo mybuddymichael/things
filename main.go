@@ -10,12 +10,14 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+var version = "dev"
+
 func main() {
 	var listName string
 
 	cmd := &cli.Command{
 		Name:    "things",
-		Version: "0.0.1",
+		Version: version,
 		Usage:   "Interact with Things.app from the command line.",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
