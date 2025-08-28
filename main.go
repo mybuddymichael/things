@@ -11,32 +11,54 @@ import (
 )
 
 func main() {
-	cmd := &cli.Command{
-		Name:  "things",
-		Usage: "View your to-dos.",
-		Action: func(context.Context, *cli.Command) error {
-			// JXA script to fetch today's todos from Things3
-			jxaScript := `
-var app = Application('Things3');
-var today = app.lists.byName('Today');
-var todos = today.toDos();
-var result = '';
-for (var i = 0; i < todos.length; i++) {
-    result += todos[i].name();
-    if (i < todos.length - 1) {
-        result += '\n';
-    }
-}
-result;
-`
+	var listName string
 
-			cmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
-			output, err := cmd.Output()
+	cmd := &cli.Command{
+		Name:    "things",
+		Version: "0.0.1",
+		Usage:   "Interact with Things.app from the command line.",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        "list",
+				Aliases:     []string{"l"},
+				Usage:       "show to-dos from the specified `list`",
+				Required:    true,
+				Destination: &listName,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			jxaScript := fmt.Sprintf(`
+try {
+    var app = Application('Things3');
+    var list = app.lists.byName('%s');
+    var todos = list.toDos();
+    var result = '';
+    for (var i = 0; i < todos.length; i++) {
+        result += todos[i].name();
+        if (i < todos.length - 1) {
+            result += '\n';
+        }
+    }
+    result;
+} catch (e) {
+    'ERROR: List "%s" not found';
+}
+`, listName, listName)
+
+			execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
+			output, err := execCmd.Output()
 			if err != nil {
 				log.Fatalf("Error running JXA script: %v", err)
 			}
 
-			fmt.Print(string(output))
+			outputStr := string(output)
+			if len(outputStr) > 0 && outputStr[:6] == "ERROR:" {
+				fmt.Print(outputStr)
+				fmt.Println("Use `things list` to see available lists.")
+				os.Exit(1)
+			}
+
+			fmt.Print(outputStr)
 			return nil
 		},
 	}
