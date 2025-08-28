@@ -39,8 +39,7 @@ func main() {
 						return err
 					}
 					if strings.HasPrefix(output, "ERROR:") {
-						fmt.Print(output + "\nUse `things list` to see available lists.")
-						os.Exit(1)
+						return cli.Exit(output+"\nUse `things list` to see available lists.", 1)
 					}
 					fmt.Print(output)
 					return nil
@@ -72,8 +71,7 @@ func main() {
 						return err
 					}
 					if strings.HasPrefix(output, "ERROR:") {
-						fmt.Print(output)
-						os.Exit(1)
+						return cli.Exit(output, 1)
 					}
 					fmt.Print(output)
 					return nil
