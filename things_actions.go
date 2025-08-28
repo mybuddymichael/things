@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // getTodosFromList retrieves all todos from the specified list in Things.app
 func getTodosFromList(listName string) (string, error) {
+	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
 	jxaScript := fmt.Sprintf(`
 try {
     var app = Application('Things3');
@@ -23,7 +25,7 @@ try {
 } catch (e) {
     'ERROR: List "%s" not found';
 }
-`, listName, listName)
+`, escapedListName, escapedListName)
 
 	execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
 	output, err := execCmd.Output()
@@ -36,17 +38,23 @@ try {
 
 // addTodoToList adds a new todo to the specified list in Things.app
 func addTodoToList(listName, text string) (string, error) {
+	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
+	escapedText := strings.ReplaceAll(text, "'", "\\'")
 	jxaScript := fmt.Sprintf(`
 try {
     var app = Application('Things3');
+    var listNames = app.lists.name();
+    if (listNames.indexOf('%s') === -1) {
+        throw new Error('List "%s" not found');
+    }
     var list = app.lists.byName('%s');
     var todo = app.ToDo({name: '%s'});
-     list.toDos.unshift(todo);
+    list.toDos.unshift(todo);
     'To-do added successfully to list "%s"!';
 } catch (e) {
     'ERROR: ' + e.message;
 }
-`, listName, text, listName)
+`, escapedListName, escapedListName, escapedListName, escapedText, escapedListName)
 
 	execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
 	output, err := execCmd.Output()
