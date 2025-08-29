@@ -43,10 +43,6 @@ func addTodoToList(listName, text string) (string, error) {
 	jxaScript := fmt.Sprintf(`
 try {
     var app = Application('Things3');
-    var listNames = app.lists.name();
-    if (listNames.indexOf('%s') === -1) {
-        throw new Error('List "%s" not found');
-    }
     var list = app.lists.byName('%s');
     var todo = app.ToDo({name: '%s'});
     list.toDos.unshift(todo);
@@ -54,7 +50,7 @@ try {
 } catch (e) {
     'ERROR: ' + e.message;
 }
-`, escapedListName, escapedListName, escapedListName, escapedText, escapedListName)
+`, escapedListName, escapedText, escapedListName)
 
 	execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
 	output, err := execCmd.Output()
