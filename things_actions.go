@@ -60,3 +60,26 @@ try {
 
 	return string(output), nil
 }
+
+// deleteTodoByName deletes a todo by name from Things.app
+func deleteTodoByName(todoName string) (string, error) {
+	escapedTodoName := strings.ReplaceAll(todoName, "'", "\\'")
+	jxaScript := fmt.Sprintf(`
+try {
+    var app = Application('Things3');
+    var todo = app.toDos.byName('%s');
+    app.delete(todo);
+    'To-do "%s" deleted successfully!';
+} catch (e) {
+    'ERROR: To-do "%s" not found';
+}
+`, escapedTodoName, escapedTodoName, escapedTodoName)
+
+	execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
+	output, err := execCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("error running JXA script: %v", err)
+	}
+
+	return string(output), nil
+}

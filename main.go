@@ -14,6 +14,7 @@ var version = "dev"
 func main() {
 	var listName string
 	var text string
+	var todoName string
 
 	cmd := &cli.Command{
 		Name:    "things",
@@ -77,8 +78,36 @@ func main() {
 					return nil
 				},
 			},
+			{
+				Name:    "delete",
+				Usage:   "Delete a todo by name",
+				Aliases: []string{"d"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "name",
+						Aliases:     []string{"n"},
+						Usage:       "the `name` of the to-do to delete",
+						Required:    true,
+						Destination: &todoName,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					output, err := deleteTodoByName(todoName)
+					if err != nil {
+						return err
+					}
+					if strings.HasPrefix(output, "ERROR:") {
+						return cli.Exit(output, 1)
+					}
+					fmt.Print(output)
+					return nil
+				},
+			},
 		},
 	}
 
-	cmd.Run(context.Background(), os.Args)
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
