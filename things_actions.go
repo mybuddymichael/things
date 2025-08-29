@@ -6,6 +6,21 @@ import (
 	"strings"
 )
 
+// CommandExecutor interface allows mocking exec.Command in tests
+type CommandExecutor interface {
+	Execute(name string, args ...string) ([]byte, error)
+}
+
+// DefaultExecutor implements CommandExecutor using real exec.Command
+type DefaultExecutor struct{}
+
+func (e *DefaultExecutor) Execute(name string, args ...string) ([]byte, error) {
+	return exec.Command(name, args...).Output()
+}
+
+// Global executor - can be replaced in tests
+var executor CommandExecutor = &DefaultExecutor{}
+
 // getTodosFromList retrieves all todos from the specified list in Things.app
 func getTodosFromList(listName string) (string, error) {
 	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
@@ -27,13 +42,12 @@ try {
 }
 `, escapedListName, escapedListName)
 
-	execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
-	output, err := execCmd.Output()
+	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
 	if err != nil {
 		return "", fmt.Errorf("error running JXA script: %v", err)
 	}
 
-	return string(output), nil
+	return strings.TrimSpace(string(output)), nil
 }
 
 // addTodoToList adds a new todo to the specified list in Things.app
@@ -52,13 +66,12 @@ try {
 }
 `, escapedListName, escapedText, escapedListName)
 
-	execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
-	output, err := execCmd.Output()
+	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
 	if err != nil {
 		return "", fmt.Errorf("error running JXA script: %v", err)
 	}
 
-	return string(output), nil
+	return strings.TrimSpace(string(output)), nil
 }
 
 // deleteTodoByName deletes a todo by name from Things.app
@@ -75,11 +88,10 @@ try {
 }
 `, escapedTodoName, escapedTodoName, escapedTodoName)
 
-	execCmd := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript)
-	output, err := execCmd.Output()
+	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
 	if err != nil {
 		return "", fmt.Errorf("error running JXA script: %v", err)
 	}
 
-	return string(output), nil
+	return strings.TrimSpace(string(output)), nil
 }
