@@ -1,2 +1,14 @@
 [tools]
 go = "1.25.0"
+
+[tasks.lint]
+run = "golangci-lint run"
+
+[tasks.format]
+run = "gofumpt -l -w ."
+
+[tasks.test]
+run = "go test"
+
+[tasks.check]
+run = ["mise run format", "mise run lint", "mise run test"]
