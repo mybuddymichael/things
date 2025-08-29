@@ -13,7 +13,6 @@ var version = "dev"
 
 func main() {
 	var listName string
-	var text string
 	var todoName string
 
 	cmd := &cli.Command{
@@ -59,15 +58,15 @@ func main() {
 						Destination: &listName,
 					},
 					&cli.StringFlag{
-						Name:        "text",
-						Aliases:     []string{"t"},
-						Usage:       "the `to-do text` to add",
+						Name:        "name",
+						Aliases:     []string{"n"},
+						Usage:       "the `to-do name` to add",
 						Required:    true,
-						Destination: &text,
+						Destination: &todoName,
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := addTodoToList(listName, text)
+					output, err := addTodoToList(listName, todoName)
 					if err != nil {
 						return err
 					}
