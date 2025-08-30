@@ -16,9 +16,10 @@ func main() {
 	var todoName string
 
 	cmd := &cli.Command{
-		Name:    "things",
-		Version: version,
-		Usage:   "Interact with Things.app from the command line.",
+		Name:                  "things",
+		Version:               version,
+		Usage:                 "Interact with Things.app from the command line.",
+		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			{
 				Name:    "show",
