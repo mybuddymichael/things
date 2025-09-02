@@ -80,9 +80,16 @@ func main() {
 			},
 			{
 				Name:    "delete",
-				Usage:   "Delete a todo by name",
+				Usage:   "Delete a todo by name from a specified list",
 				Aliases: []string{"d"},
 				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "list",
+						Aliases:     []string{"l"},
+						Usage:       "the `list` to search for the to-do in",
+						Required:    true,
+						Destination: &listName,
+					},
 					&cli.StringFlag{
 						Name:        "name",
 						Aliases:     []string{"n"},
@@ -92,7 +99,7 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := deleteTodoByName(todoName)
+					output, err := deleteTodoFromList(listName, todoName)
 					if err != nil {
 						return err
 					}

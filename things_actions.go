@@ -21,7 +21,7 @@ func (e *DefaultExecutor) Execute(name string, args ...string) ([]byte, error) {
 // Global executor - can be replaced in tests
 var executor CommandExecutor = &DefaultExecutor{}
 
-// getTodosFromList retrieves all todos from the specified list in Things.app
+// getTodosFromList retrieves all todos from the specified list in Things.app with status indicators
 func getTodosFromList(listName string) (string, error) {
 	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
 	jxaScript := fmt.Sprintf(`
@@ -31,7 +31,16 @@ try {
     var todos = list.toDos();
     var result = '';
     for (var i = 0; i < todos.length; i++) {
-        result += todos[i].name();
+        var status = todos[i].status();
+        var symbol = '';
+        if (status === 'open') {
+            symbol = '○ ';
+        } else if (status === 'completed') {
+            symbol = '✔︎ ';
+        } else if (status === 'canceled') {
+            symbol = '✕ ';
+        }
+        result += symbol + todos[i].name();
         if (i < todos.length - 1) {
             result += '\n';
         }
@@ -74,19 +83,34 @@ try {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// deleteTodoByName deletes a todo by name from Things.app
-func deleteTodoByName(todoName string) (string, error) {
+// deleteTodoFromList deletes a todo by name from a specific list in Things.app
+func deleteTodoFromList(listName, todoName string) (string, error) {
+	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
 	escapedTodoName := strings.ReplaceAll(todoName, "'", "\\'")
 	jxaScript := fmt.Sprintf(`
 try {
     var app = Application('Things3');
-    var todo = app.toDos.byName('%s');
-    app.delete(todo);
-    'To-do "%s" deleted successfully!';
+    var list = app.lists.byName('%s');
+    var todos = list.toDos();
+    var todoFound = false;
+    
+    for (var i = 0; i < todos.length; i++) {
+        if (todos[i].name() === '%s') {
+            app.delete(todos[i]);
+            todoFound = true;
+            break;
+        }
+    }
+    
+    if (todoFound) {
+        'To-do "%s" deleted successfully from list "%s"!';
+    } else {
+        'ERROR: To-do "%s" not found in list "%s"';
+    }
 } catch (e) {
-    'ERROR: To-do "%s" not found';
+    'ERROR: List "%s" not found';
 }
-`, escapedTodoName, escapedTodoName, escapedTodoName)
+`, escapedListName, escapedTodoName, escapedTodoName, escapedListName, escapedTodoName, escapedListName, escapedListName)
 
 	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
 	if err != nil {

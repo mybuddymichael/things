@@ -114,9 +114,16 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 			},
 			{
 				Name:    "delete",
-				Usage:   "Delete a todo by name",
+				Usage:   "Delete a todo by name from a specified list",
 				Aliases: []string{"d"},
 				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "list",
+						Aliases:     []string{"l"},
+						Usage:       "the `list` to search for the to-do in",
+						Required:    true,
+						Destination: &listName,
+					},
 					&cli.StringFlag{
 						Name:        "name",
 						Aliases:     []string{"n"},
@@ -126,7 +133,7 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := deleteTodoByName(todoName)
+					output, err := deleteTodoFromList(listName, todoName)
 					if err != nil {
 						return err
 					}
@@ -252,22 +259,22 @@ func TestAddCommand_Error(t *testing.T) {
 }
 
 func TestDeleteCommand_Success(t *testing.T) {
-	cleanup := setupMockExecutorIntegration(`To-do "Test Todo" deleted successfully!`, nil)
+	cleanup := setupMockExecutorIntegration(`To-do "Test Todo" deleted successfully from list "Inbox"!`, nil)
 	defer cleanup()
 
 	app := createTestApp()
-	err := app.Run(context.Background(), []string{"things", "delete", "--name", "Test Todo"})
+	err := app.Run(context.Background(), []string{"things", "delete", "--list", "Inbox", "--name", "Test Todo"})
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
 
 func TestDeleteCommand_Error(t *testing.T) {
-	cleanup := setupMockExecutorIntegration(`ERROR: To-do "NonExistent" not found`, nil)
+	cleanup := setupMockExecutorIntegration(`ERROR: To-do "NonExistent" not found in list "Inbox"`, nil)
 	defer cleanup()
 
 	app := createTestApp()
-	err := app.Run(context.Background(), []string{"things", "delete", "--name", "NonExistent"})
+	err := app.Run(context.Background(), []string{"things", "delete", "--list", "Inbox", "--name", "NonExistent"})
 
 	// Should return cli.Exit error
 	if err == nil {
@@ -290,7 +297,7 @@ func TestCommandAliases(t *testing.T) {
 	}{
 		{"show alias", []string{"things", "s", "--list", "Work"}},
 		{"add alias", []string{"things", "a", "--name", "Test"}},
-		{"delete alias", []string{"things", "d", "--name", "Test"}},
+		{"delete alias", []string{"things", "d", "--list", "Inbox", "--name", "Test"}},
 	}
 
 	for _, tt := range tests {
@@ -314,7 +321,8 @@ func TestFlagValidation(t *testing.T) {
 	}{
 		{"show missing list", []string{"things", "show"}},
 		{"add missing name", []string{"things", "add"}},
-		{"delete missing name", []string{"things", "delete"}},
+		{"delete missing list", []string{"things", "delete", "--name", "Test"}},
+		{"delete missing name", []string{"things", "delete", "--list", "Inbox"}},
 	}
 
 	for _, tt := range tests {

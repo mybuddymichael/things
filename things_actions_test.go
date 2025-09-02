@@ -201,18 +201,20 @@ func TestAddTodoToList_Errors(t *testing.T) {
 	}
 }
 
-func TestDeleteTodoByName_Success(t *testing.T) {
+func TestDeleteTodoFromList_Success(t *testing.T) {
 	tests := []struct {
 		name     string
+		listName string
 		todoName string
 		output   string
 		expected string
 	}{
 		{
-			name:     "delete existing todo",
+			name:     "delete existing todo from list",
+			listName: "Inbox",
 			todoName: "Buy groceries",
-			output:   `To-do "Buy groceries" deleted successfully!`,
-			expected: `To-do "Buy groceries" deleted successfully!`,
+			output:   `To-do "Buy groceries" deleted successfully from list "Inbox"!`,
+			expected: `To-do "Buy groceries" deleted successfully from list "Inbox"!`,
 		},
 	}
 
@@ -221,7 +223,7 @@ func TestDeleteTodoByName_Success(t *testing.T) {
 			cleanup := setupMockExecutor(tt.output, nil)
 			defer cleanup()
 
-			result, err := deleteTodoByName(tt.todoName)
+			result, err := deleteTodoFromList(tt.listName, tt.todoName)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -233,9 +235,10 @@ func TestDeleteTodoByName_Success(t *testing.T) {
 	}
 }
 
-func TestDeleteTodoByName_Errors(t *testing.T) {
+func TestDeleteTodoFromList_Errors(t *testing.T) {
 	tests := []struct {
 		name      string
+		listName  string
 		todoName  string
 		output    string
 		execError error
@@ -243,14 +246,22 @@ func TestDeleteTodoByName_Errors(t *testing.T) {
 	}{
 		{
 			name:      "exec fails",
+			listName:  "Inbox",
 			todoName:  "Test",
 			execError: errors.New("command failed"),
 			expectErr: true,
 		},
 		{
-			name:     "todo not found",
+			name:     "list not found",
+			listName: "NonExistent",
+			todoName: "Test",
+			output:   `ERROR: List "NonExistent" not found`,
+		},
+		{
+			name:     "todo not found in list",
+			listName: "Inbox",
 			todoName: "NonExistent",
-			output:   `ERROR: To-do "NonExistent" not found`,
+			output:   `ERROR: To-do "NonExistent" not found in list "Inbox"`,
 		},
 	}
 
@@ -259,7 +270,7 @@ func TestDeleteTodoByName_Errors(t *testing.T) {
 			cleanup := setupMockExecutor(tt.output, tt.execError)
 			defer cleanup()
 
-			result, err := deleteTodoByName(tt.todoName)
+			result, err := deleteTodoFromList(tt.listName, tt.todoName)
 
 			if tt.expectErr {
 				if err == nil {
@@ -269,9 +280,10 @@ func TestDeleteTodoByName_Errors(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
-				if strings.HasPrefix(result, "ERROR:") && !strings.Contains(result, tt.todoName) {
-					t.Errorf("error message should contain todo name %q", tt.todoName)
-				}
+			}
+
+			if result != tt.output {
+				t.Errorf("expected %q, got %q", tt.output, result)
 			}
 		})
 	}
