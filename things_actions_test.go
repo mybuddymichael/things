@@ -289,6 +289,123 @@ func TestDeleteTodoFromList_Errors(t *testing.T) {
 	}
 }
 
+func TestMoveTodoBetweenLists_Success(t *testing.T) {
+	tests := []struct {
+		name     string
+		fromList string
+		toList   string
+		todoName string
+		output   string
+		expected string
+	}{
+		{
+			name:     "move todo between lists",
+			fromList: "Inbox",
+			toList:   "Work",
+			todoName: "Buy groceries",
+			output:   `To-do "Buy groceries" moved successfully from list "Inbox" to list "Work"!`,
+			expected: `To-do "Buy groceries" moved successfully from list "Inbox" to list "Work"!`,
+		},
+		{
+			name:     "move with special characters",
+			fromList: "Today",
+			toList:   "Personal",
+			todoName: "Call mom @ 3pm",
+			output:   `To-do "Call mom @ 3pm" moved successfully from list "Today" to list "Personal"!`,
+			expected: `To-do "Call mom @ 3pm" moved successfully from list "Today" to list "Personal"!`,
+		},
+		{
+			name:     "move from today to inbox with complex name",
+			fromList: "today",
+			toList:   "inbox",
+			todoName: "Make a small plan for how to help cutter",
+			output:   `To-do "Make a small plan for how to help cutter" moved successfully from list "today" to list "inbox"!`,
+			expected: `To-do "Make a small plan for how to help cutter" moved successfully from list "today" to list "inbox"!`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutor(tt.output, nil)
+			defer cleanup()
+
+			result, err := moveTodoBetweenLists(tt.fromList, tt.toList, tt.todoName)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestMoveTodoBetweenLists_Errors(t *testing.T) {
+	tests := []struct {
+		name      string
+		fromList  string
+		toList    string
+		todoName  string
+		output    string
+		execError error
+		expectErr bool
+	}{
+		{
+			name:      "exec fails",
+			fromList:  "Inbox",
+			toList:    "Work",
+			todoName:  "Test",
+			execError: errors.New("command failed"),
+			expectErr: true,
+		},
+		{
+			name:     "source list not found",
+			fromList: "NonExistent",
+			toList:   "Work",
+			todoName: "Test Todo",
+			output:   "ERROR: can't get object",
+		},
+		{
+			name:     "target list not found",
+			fromList: "Inbox",
+			toList:   "NonExistent",
+			todoName: "Test Todo",
+			output:   "ERROR: can't get object",
+		},
+		{
+			name:     "todo not found in source list",
+			fromList: "Inbox",
+			toList:   "Work",
+			todoName: "NonExistent",
+			output:   `ERROR: To-do "NonExistent" not found in list "Inbox"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutor(tt.output, tt.execError)
+			defer cleanup()
+
+			result, err := moveTodoBetweenLists(tt.fromList, tt.toList, tt.todoName)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+
+			if result != tt.output {
+				t.Errorf("expected %q, got %q", tt.output, result)
+			}
+		})
+	}
+}
+
 func TestStringEscaping(t *testing.T) {
 	tests := []struct {
 		name     string

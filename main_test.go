@@ -51,6 +51,8 @@ func createTestApp() *cli.Command {
 func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 	var listName string
 	var todoName string
+	var fromList string
+	var toList string
 
 	app := &cli.Command{
 		Name:    "things",
@@ -134,6 +136,42 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					output, err := deleteTodoFromList(listName, todoName)
+					if err != nil {
+						return err
+					}
+					if strings.HasPrefix(output, "ERROR:") {
+						return cli.Exit(output, 1)
+					}
+					return nil
+				},
+			},
+			{
+				Name:    "move",
+				Usage:   "Move a todo from one list to another",
+				Aliases: []string{"m"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "from",
+						Usage:       "the `list` to move the to-do from",
+						Required:    true,
+						Destination: &fromList,
+					},
+					&cli.StringFlag{
+						Name:        "to",
+						Usage:       "the `list` to move the to-do to",
+						Required:    true,
+						Destination: &toList,
+					},
+					&cli.StringFlag{
+						Name:        "name",
+						Aliases:     []string{"n"},
+						Usage:       "the `name` of the to-do to move",
+						Required:    true,
+						Destination: &todoName,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					output, err := moveTodoBetweenLists(fromList, toList, todoName)
 					if err != nil {
 						return err
 					}
@@ -298,6 +336,7 @@ func TestCommandAliases(t *testing.T) {
 		{"show alias", []string{"things", "s", "--list", "Work"}},
 		{"add alias", []string{"things", "a", "--name", "Test"}},
 		{"delete alias", []string{"things", "d", "--list", "Inbox", "--name", "Test"}},
+		{"move alias", []string{"things", "m", "--from", "Inbox", "--to", "Work", "--name", "Test"}},
 	}
 
 	for _, tt := range tests {
@@ -314,6 +353,49 @@ func TestCommandAliases(t *testing.T) {
 	}
 }
 
+func TestMoveCommand_Success(t *testing.T) {
+	cleanup := setupMockExecutorIntegration(`To-do "Test Todo" moved successfully from list "Inbox" to list "Work"!`, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "move", "--from", "Inbox", "--to", "Work", "--name", "Test Todo"})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestMoveCommand_Error(t *testing.T) {
+	cleanup := setupMockExecutorIntegration(`ERROR: To-do "NonExistent" not found in list "Inbox"`, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "move", "--from", "Inbox", "--to", "Work", "--name", "NonExistent"})
+
+	// Should return cli.Exit error
+	if err == nil {
+		t.Error("expected cli.Exit error for non-existent todo")
+	}
+
+	if exitErr, ok := err.(cli.ExitCoder); ok {
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
+		}
+	} else {
+		t.Errorf("expected cli.ExitCoder, got %T", err)
+	}
+}
+
+func TestMoveCommand_TodayToInbox(t *testing.T) {
+	cleanup := setupMockExecutorIntegration(`To-do "Make a small plan for how to help cutter" moved successfully from list "today" to list "inbox"!`, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "move", "--from", "today", "--to", "inbox", "--name", "Make a small plan for how to help cutter"})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestFlagValidation(t *testing.T) {
 	tests := []struct {
 		name string
@@ -323,6 +405,9 @@ func TestFlagValidation(t *testing.T) {
 		{"add missing name", []string{"things", "add"}},
 		{"delete missing list", []string{"things", "delete", "--name", "Test"}},
 		{"delete missing name", []string{"things", "delete", "--list", "Inbox"}},
+		{"move missing from", []string{"things", "move", "--to", "Work", "--name", "Test"}},
+		{"move missing to", []string{"things", "move", "--from", "Inbox", "--name", "Test"}},
+		{"move missing name", []string{"things", "move", "--from", "Inbox", "--to", "Work"}},
 	}
 
 	for _, tt := range tests {

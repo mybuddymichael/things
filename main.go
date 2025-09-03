@@ -14,6 +14,8 @@ var version = "dev"
 func main() {
 	var listName string
 	var todoName string
+	var fromList string
+	var toList string
 
 	cmd := &cli.Command{
 		Name:                  "things",
@@ -100,6 +102,43 @@ func main() {
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					output, err := deleteTodoFromList(listName, todoName)
+					if err != nil {
+						return err
+					}
+					if strings.HasPrefix(output, "ERROR:") {
+						return cli.Exit(output, 1)
+					}
+					fmt.Println(output)
+					return nil
+				},
+			},
+			{
+				Name:    "move",
+				Usage:   "Move a todo from one list to another",
+				Aliases: []string{"m"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "from",
+						Usage:       "the `list` to move the to-do from",
+						Required:    true,
+						Destination: &fromList,
+					},
+					&cli.StringFlag{
+						Name:        "to",
+						Usage:       "the `list` to move the to-do to",
+						Required:    true,
+						Destination: &toList,
+					},
+					&cli.StringFlag{
+						Name:        "name",
+						Aliases:     []string{"n"},
+						Usage:       "the `name` of the to-do to move",
+						Required:    true,
+						Destination: &todoName,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					output, err := moveTodoBetweenLists(fromList, toList, todoName)
 					if err != nil {
 						return err
 					}

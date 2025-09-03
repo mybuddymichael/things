@@ -119,3 +119,33 @@ try {
 
 	return strings.TrimSpace(string(output)), nil
 }
+
+// moveTodoBetweenLists moves a todo from one list to another in Things.app
+func moveTodoBetweenLists(fromList, toList, todoName string) (string, error) {
+	escapedFromList := strings.ReplaceAll(fromList, "\"", "\\\"")
+	escapedToList := strings.ReplaceAll(toList, "\"", "\\\"")
+	escapedTodoName := strings.ReplaceAll(todoName, "\"", "\\\"")
+
+	applescript := fmt.Sprintf(`
+try
+    tell application "Things3"
+        set todoItem to first to do of list "%s" whose name is "%s"
+        move todoItem to list "%s"
+        return "To-do \"%s\" moved successfully from list \"%s\" to list \"%s\"!"
+    end tell
+on error errMsg
+    if errMsg contains "Can't get" then
+        return "ERROR: To-do \"%s\" not found in list \"%s\""
+    else
+        return "ERROR: " & errMsg
+    end if
+end try
+`, escapedFromList, escapedTodoName, escapedToList, escapedTodoName, escapedFromList, escapedToList, escapedTodoName, escapedFromList)
+
+	output, err := executor.Execute("osascript", "-e", applescript)
+	if err != nil {
+		return "", fmt.Errorf("error running AppleScript: %v", err)
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
