@@ -16,6 +16,7 @@ func main() {
 	var todoName string
 	var fromList string
 	var toList string
+	var tags string
 
 	cmd := &cli.Command{
 		Name:                  "things",
@@ -67,9 +68,15 @@ func main() {
 						Required:    true,
 						Destination: &todoName,
 					},
+					&cli.StringFlag{
+						Name:        "tags",
+						Aliases:     []string{"t"},
+						Usage:       "comma-separated `tags` to add to the to-do (e.g., \"Home, Work\")",
+						Destination: &tags,
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := addTodoToList(listName, todoName)
+					output, err := addTodoToList(listName, todoName, tags)
 					if err != nil {
 						return err
 					}

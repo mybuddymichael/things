@@ -145,7 +145,7 @@ func TestAddTodoToList_Success(t *testing.T) {
 			cleanup := setupMockExecutor(tt.output, nil)
 			defer cleanup()
 
-			result, err := addTodoToList(tt.listName, tt.todoName)
+			result, err := addTodoToList(tt.listName, tt.todoName, "")
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -186,7 +186,7 @@ func TestAddTodoToList_Errors(t *testing.T) {
 			cleanup := setupMockExecutor(tt.output, tt.execError)
 			defer cleanup()
 
-			_, err := addTodoToList(tt.listName, tt.todoName)
+			_, err := addTodoToList(tt.listName, tt.todoName, "")
 
 			if tt.expectErr {
 				if err == nil {
@@ -401,6 +401,66 @@ func TestMoveTodoBetweenLists_Errors(t *testing.T) {
 
 			if result != tt.output {
 				t.Errorf("expected %q, got %q", tt.output, result)
+			}
+		})
+	}
+}
+
+func TestAddTodoToList_WithTags(t *testing.T) {
+	tests := []struct {
+		name     string
+		listName string
+		todoName string
+		tags     string
+		output   string
+		expected string
+	}{
+		{
+			name:     "add todo with single tag",
+			listName: "Work",
+			todoName: "New Task",
+			tags:     "Important",
+			output:   `To-do added successfully to list "Work"!`,
+			expected: `To-do added successfully to list "Work"!`,
+		},
+		{
+			name:     "add todo with multiple tags",
+			listName: "Work",
+			todoName: "New Task",
+			tags:     "Important, Urgent, Home",
+			output:   `To-do added successfully to list "Work"!`,
+			expected: `To-do added successfully to list "Work"!`,
+		},
+		{
+			name:     "add todo with tags containing quotes",
+			listName: "Work",
+			todoName: "New Task",
+			tags:     "Mom's stuff, Dad's work",
+			output:   `To-do added successfully to list "Work"!`,
+			expected: `To-do added successfully to list "Work"!`,
+		},
+		{
+			name:     "add todo with empty tags",
+			listName: "inbox",
+			todoName: "Quick note",
+			tags:     "",
+			output:   `To-do added successfully to list "inbox"!`,
+			expected: `To-do added successfully to list "inbox"!`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutor(tt.output, nil)
+			defer cleanup()
+
+			result, err := addTodoToList(tt.listName, tt.todoName, tt.tags)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
 		})
 	}

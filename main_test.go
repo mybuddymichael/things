@@ -53,6 +53,7 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 	var todoName string
 	var fromList string
 	var toList string
+	var tags string
 
 	app := &cli.Command{
 		Name:    "things",
@@ -102,9 +103,15 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 						Required:    true,
 						Destination: &todoName,
 					},
+					&cli.StringFlag{
+						Name:        "tags",
+						Aliases:     []string{"t"},
+						Usage:       "comma-separated `tags` to add to the to-do (e.g., \"Home, Work\")",
+						Destination: &tags,
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := addTodoToList(listName, todoName)
+					output, err := addTodoToList(listName, todoName, "")
 					if err != nil {
 						return err
 					}
@@ -391,6 +398,28 @@ func TestMoveCommand_TodayToInbox(t *testing.T) {
 
 	app := createTestApp()
 	err := app.Run(context.Background(), []string{"things", "move", "--from", "today", "--to", "inbox", "--name", "Make a small plan for how to help cutter"})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAddCommand_WithTags(t *testing.T) {
+	cleanup := setupMockExecutorIntegration(`To-do added successfully to list "Work"!`, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "add", "--name", "Test Todo", "--list", "Work", "--tags", "Important, Urgent"})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAddCommand_WithTagsAlias(t *testing.T) {
+	cleanup := setupMockExecutorIntegration(`To-do added successfully to list "inbox"!`, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "add", "--name", "Test Todo", "-t", "Home"})
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}

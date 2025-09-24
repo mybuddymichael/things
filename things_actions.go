@@ -60,20 +60,29 @@ try {
 }
 
 // addTodoToList adds a new todo to the specified list in Things.app
-func addTodoToList(listName, text string) (string, error) {
+func addTodoToList(listName, text, tags string) (string, error) {
 	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
 	escapedText := strings.ReplaceAll(text, "'", "\\'")
+	escapedTags := strings.ReplaceAll(tags, "'", "\\'")
+
+	var todoProperties string
+	if tags == "" {
+		todoProperties = fmt.Sprintf("{name: '%s'}", escapedText)
+	} else {
+		todoProperties = fmt.Sprintf("{name: '%s', tagNames: '%s'}", escapedText, escapedTags)
+	}
+
 	jxaScript := fmt.Sprintf(`
 try {
     var app = Application('Things3');
     var list = app.lists.byName('%s');
-    var todo = app.ToDo({name: '%s'});
+    var todo = app.ToDo(%s);
     list.toDos.unshift(todo);
     'To-do added successfully to list "%s"!';
 } catch (e) {
     'ERROR: ' + e.message;
 }
-`, escapedListName, escapedText, escapedListName)
+`, escapedListName, todoProperties, escapedListName)
 
 	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
 	if err != nil {
