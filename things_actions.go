@@ -158,3 +158,41 @@ end try
 
 	return strings.TrimSpace(string(output)), nil
 }
+
+// renameTodoInList renames a todo by name in a specific list in Things.app
+func renameTodoInList(listName, oldName, newName string) (string, error) {
+	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
+	escapedOldName := strings.ReplaceAll(oldName, "'", "\\'")
+	escapedNewName := strings.ReplaceAll(newName, "'", "\\'")
+	jxaScript := fmt.Sprintf(`
+try {
+    var app = Application('Things3');
+    var list = app.lists.byName('%s');
+    var todos = list.toDos();
+    var todoFound = false;
+
+    for (var i = 0; i < todos.length; i++) {
+        if (todos[i].name() === '%s') {
+            todos[i].name = '%s';
+            todoFound = true;
+            break;
+        }
+    }
+
+    if (todoFound) {
+        'To-do "%s" renamed to "%s" in list "%s"!';
+    } else {
+        'ERROR: To-do "%s" not found in list "%s"';
+    }
+} catch (e) {
+    'ERROR: List "%s" not found';
+}
+`, escapedListName, escapedOldName, escapedNewName, escapedOldName, escapedNewName, escapedListName, escapedOldName, escapedListName, escapedListName)
+
+	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
+	if err != nil {
+		return "", fmt.Errorf("error running JXA script: %v", err)
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}

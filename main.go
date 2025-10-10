@@ -17,6 +17,7 @@ func main() {
 	var fromList string
 	var toList string
 	var tags string
+	var newName string
 
 	cmd := &cli.Command{
 		Name:                  "things",
@@ -146,6 +147,44 @@ func main() {
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					output, err := moveTodoBetweenLists(fromList, toList, todoName)
+					if err != nil {
+						return err
+					}
+					if strings.HasPrefix(output, "ERROR:") {
+						return cli.Exit(output, 1)
+					}
+					fmt.Println(output)
+					return nil
+				},
+			},
+			{
+				Name:    "rename",
+				Usage:   "Rename a todo in a specified list",
+				Aliases: []string{"r"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "list",
+						Aliases:     []string{"l"},
+						Usage:       "the `list` containing the to-do",
+						Required:    true,
+						Destination: &listName,
+					},
+					&cli.StringFlag{
+						Name:        "name",
+						Aliases:     []string{"n"},
+						Usage:       "the current `name` of the to-do",
+						Required:    true,
+						Destination: &todoName,
+					},
+					&cli.StringFlag{
+						Name:        "new-name",
+						Usage:       "the `new name` for the to-do",
+						Required:    true,
+						Destination: &newName,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					output, err := renameTodoInList(listName, todoName, newName)
 					if err != nil {
 						return err
 					}
