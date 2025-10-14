@@ -367,3 +367,32 @@ func getCompletedTodos(dateFilter string) ([]Todo, error) {
 	startDateISO := startDate.Format(time.RFC3339)
 	return getTodosFromListWithFilter("Logbook", startDateISO)
 }
+
+// getCompletedTodosFiltered retrieves completed todos with optional area/project filters
+func getCompletedTodosFiltered(dateFilter, areaFilter, projectFilter string) ([]Todo, error) {
+	todos, err := getCompletedTodos(dateFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no filters, return all
+	if areaFilter == "" && projectFilter == "" {
+		return todos, nil
+	}
+
+	var filtered []Todo
+	for _, todo := range todos {
+		// Apply area filter if specified
+		if areaFilter != "" && todo.Area != areaFilter {
+			continue
+		}
+
+		// Apply project filter if specified
+		if projectFilter != "" && todo.Project != projectFilter {
+			continue
+		}
+
+		filtered = append(filtered, todo)
+	}
+	return filtered, nil
+}

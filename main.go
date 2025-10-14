@@ -19,8 +19,9 @@ func main() {
 	var tags string
 	var newName string
 	var dateFilter string
+	var areaFilter string
+	var projectFilter string
 	var jsonl bool
-	var runs int
 
 	cmd := &cli.Command{
 		Name:                  "things",
@@ -228,6 +229,18 @@ func main() {
 						Required:    true,
 						Destination: &dateFilter,
 					},
+					&cli.StringFlag{
+						Name:        "area",
+						Aliases:     []string{"a"},
+						Usage:       "filter by `AREA` name",
+						Destination: &areaFilter,
+					},
+					&cli.StringFlag{
+						Name:        "project",
+						Aliases:     []string{"p"},
+						Usage:       "filter by `PROJECT` name",
+						Destination: &projectFilter,
+					},
 					&cli.BoolFlag{
 						Name:        "jsonl",
 						Usage:       "output todos in JSONL format",
@@ -240,7 +253,7 @@ func main() {
 						return cli.Exit("ERROR: --date must be one of: today, this week, this month", 1)
 					}
 
-					todos, err := getCompletedTodos(dateFilter)
+					todos, err := getCompletedTodosFiltered(dateFilter, areaFilter, projectFilter)
 					if err != nil {
 						if strings.HasPrefix(err.Error(), "ERROR:") {
 							return cli.Exit(err.Error(), 1)
@@ -261,36 +274,6 @@ func main() {
 
 					output := formatTodosForDisplay(todos)
 					fmt.Println(output)
-					return nil
-				},
-			},
-			{
-				Name:    "experiment",
-				Usage:   "Run performance experiments on different fetch approaches",
-				Aliases: []string{"exp"},
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:        "date",
-						Aliases:     []string{"d"},
-						Usage:       "test with date filter `TIMEFRAME` (today, this week, this month)",
-						Value:       "this week",
-						Destination: &dateFilter,
-					},
-					&cli.IntFlag{
-						Name:        "runs",
-						Aliases:     []string{"r"},
-						Usage:       "number of `runs` per approach",
-						Value:       3,
-						Destination: &runs,
-					},
-				},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// Validate date filter
-					if dateFilter != "today" && dateFilter != "this week" && dateFilter != "this month" {
-						return cli.Exit("ERROR: --date must be one of: today, this week, this month", 1)
-					}
-
-					runAllExperiments(dateFilter, runs)
 					return nil
 				},
 			},
