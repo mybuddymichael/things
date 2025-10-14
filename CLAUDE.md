@@ -10,5 +10,7 @@ This is a CLI for interacting with Things.app.
 ## Misc
 
 - Use JXA, not Applescript, for all Applescript code.
-- When you need to look up the API, use a subagent and a very specific query. The subagent should do its research using this URL, then provide an answer: https://culturedcode.com/things/support/articles/4562654/ 
+- Use `mise` for all tasks.
 - Whenever you're done with changes, run `mise run check`.
+- When you need to look up the API, use a subagent and a very specific query. The subagent should do its research using this URL, then provide an answer: https://culturedcode.com/things/support/articles/4562654/ 
+- We track work in Beads instead of Markdown. Run `bd quickstart` to see how.
