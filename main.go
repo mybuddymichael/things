@@ -20,6 +20,7 @@ func main() {
 	var newName string
 	var dateFilter string
 	var jsonl bool
+	var runs int
 
 	cmd := &cli.Command{
 		Name:                  "things",
@@ -260,6 +261,36 @@ func main() {
 
 					output := formatTodosForDisplay(todos)
 					fmt.Println(output)
+					return nil
+				},
+			},
+			{
+				Name:    "experiment",
+				Usage:   "Run performance experiments on different fetch approaches",
+				Aliases: []string{"exp"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "date",
+						Aliases:     []string{"d"},
+						Usage:       "test with date filter `TIMEFRAME` (today, this week, this month)",
+						Value:       "this week",
+						Destination: &dateFilter,
+					},
+					&cli.IntFlag{
+						Name:        "runs",
+						Aliases:     []string{"r"},
+						Usage:       "number of `runs` per approach",
+						Value:       3,
+						Destination: &runs,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					// Validate date filter
+					if dateFilter != "today" && dateFilter != "this week" && dateFilter != "this month" {
+						return cli.Exit("ERROR: --date must be one of: today, this week, this month", 1)
+					}
+
+					runAllExperiments(dateFilter, runs)
 					return nil
 				},
 			},

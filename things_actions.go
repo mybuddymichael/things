@@ -338,22 +338,78 @@ func calculateStartDate(filter string) time.Time {
 
 // getCompletedTodos retrieves completed todos from the Logbook filtered by date
 func getCompletedTodos(dateFilter string) ([]Todo, error) {
-	// Reuse existing function to get all completed todos from Logbook
-	todos, err := getTodosFromList("Logbook")
-	if err != nil {
-		return nil, err
-	}
-
-	// Calculate start date based on filter
 	startDate := calculateStartDate(dateFilter)
+	startDateISO := startDate.Format(time.RFC3339)
 
-	// Filter todos by completion date
-	var filtered []Todo
-	for _, todo := range todos {
-		if todo.CompletionDate != nil && !todo.CompletionDate.Before(startDate) {
-			filtered = append(filtered, todo)
-		}
+	// Filter in JXA for performance (10x+ speedup vs filtering in Go)
+	jxaScript := fmt.Sprintf(`
+try {
+    var app = Application('Things3');
+    var list = app.lists.byName('Logbook');
+    var todos = list.toDos();
+    var result = [];
+    var filterDate = new Date('%s');
+
+    for (var i = 0; i < todos.length; i++) {
+        var todo = todos[i];
+        var completionDate = todo.completionDate();
+
+        // Skip if no completion date or before filter date
+        if (!completionDate || completionDate < filterDate) {
+            continue;
+        }
+
+        var item = {
+            name: todo.name(),
+            status: todo.status()
+        };
+
+        // Add optional string properties
+        if (todo.notes()) item.notes = todo.notes();
+
+        // Add date properties (convert to ISO 8601 strings)
+        if (todo.creationDate()) item.creationDate = todo.creationDate().toISOString();
+        if (todo.modificationDate()) item.modificationDate = todo.modificationDate().toISOString();
+        if (todo.dueDate()) item.dueDate = todo.dueDate().toISOString();
+        if (completionDate) item.completionDate = completionDate.toISOString();
+        if (todo.cancellationDate()) item.cancellationDate = todo.cancellationDate().toISOString();
+
+        // Add tag names (convert string to array if needed)
+        var tags = todo.tagNames();
+        if (tags) {
+            if (typeof tags === 'string') {
+                item.tagNames = tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
+            } else if (tags.length > 0) {
+                item.tagNames = tags;
+            }
+        }
+
+        // Add parent references
+        if (todo.area && todo.area()) item.area = todo.area().name();
+        if (todo.project && todo.project()) item.project = todo.project().name();
+
+        result.push(item);
+    }
+    JSON.stringify(result);
+} catch (e) {
+    'ERROR: ' + e.message;
+}
+`, startDateISO)
+
+	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
+	if err != nil {
+		return nil, fmt.Errorf("error running JXA script: %v", err)
 	}
 
-	return filtered, nil
+	outputStr := strings.TrimSpace(string(output))
+	if strings.HasPrefix(outputStr, "ERROR:") {
+		return nil, fmt.Errorf("%s", outputStr)
+	}
+
+	var todos []Todo
+	if err := json.Unmarshal([]byte(outputStr), &todos); err != nil {
+		return nil, fmt.Errorf("error parsing JSON: %v", err)
+	}
+
+	return todos, nil
 }
