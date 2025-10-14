@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -20,6 +21,12 @@ func (e *DefaultExecutor) Execute(name string, args ...string) ([]byte, error) {
 
 // Global executor - can be replaced in tests
 var executor CommandExecutor = &DefaultExecutor{}
+
+// Todo represents a Things.app todo item
+type Todo struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
 
 // getTodosFromList retrieves all todos from the specified list in Things.app with status indicators
 func getTodosFromList(listName string) (string, error) {
@@ -57,6 +64,45 @@ try {
 	}
 
 	return strings.TrimSpace(string(output)), nil
+}
+
+// getTodosFromListJSON retrieves all todos from the specified list in Things.app as structured data
+func getTodosFromListJSON(listName string) ([]Todo, error) {
+	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
+	jxaScript := fmt.Sprintf(`
+try {
+    var app = Application('Things3');
+    var list = app.lists.byName('%s');
+    var todos = list.toDos();
+    var result = [];
+    for (var i = 0; i < todos.length; i++) {
+        result.push({
+            name: todos[i].name(),
+            status: todos[i].status()
+        });
+    }
+    JSON.stringify(result);
+} catch (e) {
+    'ERROR: List "%s" not found';
+}
+`, escapedListName, escapedListName)
+
+	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
+	if err != nil {
+		return nil, fmt.Errorf("error running JXA script: %v", err)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if strings.HasPrefix(outputStr, "ERROR:") {
+		return nil, fmt.Errorf("%s", outputStr)
+	}
+
+	var todos []Todo
+	if err := json.Unmarshal([]byte(outputStr), &todos); err != nil {
+		return nil, fmt.Errorf("error parsing JSON: %v", err)
+	}
+
+	return todos, nil
 }
 
 // addTodoToList adds a new todo to the specified list in Things.app

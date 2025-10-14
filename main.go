@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -18,6 +19,7 @@ func main() {
 	var toList string
 	var tags string
 	var newName string
+	var jsonl bool
 
 	cmd := &cli.Command{
 		Name:                  "things",
@@ -37,8 +39,31 @@ func main() {
 						Required:    true,
 						Destination: &listName,
 					},
+					&cli.BoolFlag{
+						Name:        "jsonl",
+						Usage:       "output todos in JSONL format",
+						Destination: &jsonl,
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
+					if jsonl {
+						todos, err := getTodosFromListJSON(listName)
+						if err != nil {
+							if strings.HasPrefix(err.Error(), "ERROR:") {
+								return cli.Exit(err.Error()+"\nUse `things list` to see available lists.", 1)
+							}
+							return err
+						}
+						for _, todo := range todos {
+							jsonBytes, err := json.Marshal(todo)
+							if err != nil {
+								return fmt.Errorf("error marshaling todo: %v", err)
+							}
+							fmt.Println(string(jsonBytes))
+						}
+						return nil
+					}
+
 					output, err := getTodosFromList(listName)
 					if err != nil {
 						return err

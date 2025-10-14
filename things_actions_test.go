@@ -504,3 +504,128 @@ func TestStringEscaping(t *testing.T) {
 		})
 	}
 }
+
+func TestGetTodosFromListJSON_Success(t *testing.T) {
+	tests := []struct {
+		name     string
+		listName string
+		output   string
+		expected []Todo
+	}{
+		{
+			name:     "valid list with multiple todos",
+			listName: "Work",
+			output:   `[{"name":"Buy groceries","status":"open"},{"name":"Write report","status":"completed"}]`,
+			expected: []Todo{
+				{Name: "Buy groceries", Status: "open"},
+				{Name: "Write report", Status: "completed"},
+			},
+		},
+		{
+			name:     "empty list",
+			listName: "Empty",
+			output:   `[]`,
+			expected: []Todo{},
+		},
+		{
+			name:     "single todo",
+			listName: "Inbox",
+			output:   `[{"name":"Call dentist","status":"open"}]`,
+			expected: []Todo{
+				{Name: "Call dentist", Status: "open"},
+			},
+		},
+		{
+			name:     "todos with different statuses",
+			listName: "Work",
+			output:   `[{"name":"Task 1","status":"open"},{"name":"Task 2","status":"completed"},{"name":"Task 3","status":"canceled"}]`,
+			expected: []Todo{
+				{Name: "Task 1", Status: "open"},
+				{Name: "Task 2", Status: "completed"},
+				{Name: "Task 3", Status: "canceled"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutor(tt.output, nil)
+			defer cleanup()
+
+			result, err := getTodosFromListJSON(tt.listName)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			if len(result) != len(tt.expected) {
+				t.Fatalf("expected %d todos, got %d", len(tt.expected), len(result))
+			}
+
+			for i, todo := range result {
+				if todo.Name != tt.expected[i].Name {
+					t.Errorf("todo %d: expected name %q, got %q", i, tt.expected[i].Name, todo.Name)
+				}
+				if todo.Status != tt.expected[i].Status {
+					t.Errorf("todo %d: expected status %q, got %q", i, tt.expected[i].Status, todo.Status)
+				}
+			}
+		})
+	}
+}
+
+func TestGetTodosFromListJSON_Errors(t *testing.T) {
+	tests := []struct {
+		name      string
+		listName  string
+		output    string
+		execError error
+		expectErr bool
+	}{
+		{
+			name:      "exec command fails",
+			listName:  "Work",
+			execError: errors.New("osascript not found"),
+			expectErr: true,
+		},
+		{
+			name:      "list not found",
+			listName:  "NonExistent",
+			output:    `ERROR: List "NonExistent" not found`,
+			expectErr: true,
+		},
+		{
+			name:      "invalid JSON",
+			listName:  "Work",
+			output:    `{invalid json}`,
+			expectErr: true,
+		},
+		{
+			name:      "malformed JSON array",
+			listName:  "Work",
+			output:    `[{"name":"Task 1","status":"open"`,
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutor(tt.output, tt.execError)
+			defer cleanup()
+
+			result, err := getTodosFromListJSON(tt.listName)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				if result != nil {
+					t.Errorf("expected nil result on error, got %v", result)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
