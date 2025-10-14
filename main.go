@@ -18,6 +18,7 @@ func main() {
 	var toList string
 	var tags string
 	var newName string
+	var dateFilter string
 	var jsonl bool
 
 	cmd := &cli.Command{
@@ -211,6 +212,54 @@ func main() {
 						return cli.Exit(result.Message, 1)
 					}
 					fmt.Println(formatOperationResult(result))
+					return nil
+				},
+			},
+			{
+				Name:    "log",
+				Usage:   "Show completed to-dos from the Logbook",
+				Aliases: []string{"lg"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "date",
+						Aliases:     []string{"d"},
+						Usage:       "show completed to-dos from `TIMEFRAME` (today, this week, this month)",
+						Required:    true,
+						Destination: &dateFilter,
+					},
+					&cli.BoolFlag{
+						Name:        "jsonl",
+						Usage:       "output todos in JSONL format",
+						Destination: &jsonl,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					// Validate date filter
+					if dateFilter != "today" && dateFilter != "this week" && dateFilter != "this month" {
+						return cli.Exit("ERROR: --date must be one of: today, this week, this month", 1)
+					}
+
+					todos, err := getCompletedTodos(dateFilter)
+					if err != nil {
+						if strings.HasPrefix(err.Error(), "ERROR:") {
+							return cli.Exit(err.Error(), 1)
+						}
+						return err
+					}
+
+					if jsonl {
+						for _, todo := range todos {
+							jsonLine, err := formatTodoAsJSONL(todo)
+							if err != nil {
+								return err
+							}
+							fmt.Println(jsonLine)
+						}
+						return nil
+					}
+
+					output := formatTodosForDisplay(todos)
+					fmt.Println(output)
 					return nil
 				},
 			},

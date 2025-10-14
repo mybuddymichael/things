@@ -317,3 +317,43 @@ try {
 		Message: fmt.Sprintf("To-do \"%s\" renamed to \"%s\" in list \"%s\"!", oldName, newName, listName),
 	}, nil
 }
+
+// calculateStartDate returns the start date based on the filter
+func calculateStartDate(filter string) time.Time {
+	now := time.Now()
+	switch filter {
+	case "today":
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	case "this week":
+		// Go back to most recent Sunday at midnight
+		daysBack := int(now.Weekday()) // Sunday = 0, Monday = 1, etc.
+		sunday := now.AddDate(0, 0, -daysBack)
+		return time.Date(sunday.Year(), sunday.Month(), sunday.Day(), 0, 0, 0, 0, sunday.Location())
+	case "this month":
+		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	default:
+		return time.Time{} // Zero time
+	}
+}
+
+// getCompletedTodos retrieves completed todos from the Logbook filtered by date
+func getCompletedTodos(dateFilter string) ([]Todo, error) {
+	// Reuse existing function to get all completed todos from Logbook
+	todos, err := getTodosFromList("Logbook")
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate start date based on filter
+	startDate := calculateStartDate(dateFilter)
+
+	// Filter todos by completion date
+	var filtered []Todo
+	for _, todo := range todos {
+		if todo.CompletionDate != nil && !todo.CompletionDate.Before(startDate) {
+			filtered = append(filtered, todo)
+		}
+	}
+
+	return filtered, nil
+}
