@@ -2,7 +2,12 @@
 
 This is a CLI for interacting with Things.app.
 
-## API
+## Tech stack
+
+- Go
+- urfave/cli/v3 (for command-line interface)
+
+## Things API
 
 - The Things Applescript API is documented here: https://culturedcode.com/things/support/articles/4562654/
 - Review the API page if you are ever unclear about how it works.

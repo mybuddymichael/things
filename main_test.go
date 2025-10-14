@@ -54,6 +54,11 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 	var fromList string
 	var toList string
 	var tags string
+	var newName string
+	var dateFilter string
+	var areaFilter string
+	var projectFilter string
+	var jsonl bool
 
 	app := &cli.Command{
 		Name:    "things",
@@ -72,6 +77,11 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 						Required:    true,
 						Destination: &listName,
 					},
+					&cli.BoolFlag{
+						Name:        "jsonl",
+						Usage:       "output todos in JSONL format",
+						Destination: &jsonl,
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					todos, err := getTodosFromList(listName)
@@ -82,6 +92,7 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 						return err
 					}
 					_ = todos
+					_ = jsonl
 					return nil
 				},
 			},
@@ -112,7 +123,7 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					result, err := addTodoToList(listName, todoName, "")
+					result, err := addTodoToList(listName, todoName, tags)
 					if err != nil {
 						return err
 					}
@@ -186,6 +197,89 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 					if !result.Success {
 						return cli.Exit(result.Message, 1)
 					}
+					return nil
+				},
+			},
+			{
+				Name:    "rename",
+				Usage:   "Rename a todo in a specified list",
+				Aliases: []string{"r"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "list",
+						Aliases:     []string{"l"},
+						Usage:       "the `list` containing the to-do",
+						Required:    true,
+						Destination: &listName,
+					},
+					&cli.StringFlag{
+						Name:        "name",
+						Aliases:     []string{"n"},
+						Usage:       "the current `name` of the to-do",
+						Required:    true,
+						Destination: &todoName,
+					},
+					&cli.StringFlag{
+						Name:        "new-name",
+						Usage:       "the `new name` for the to-do",
+						Required:    true,
+						Destination: &newName,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					result, err := renameTodoInList(listName, todoName, newName)
+					if err != nil {
+						return err
+					}
+					if !result.Success {
+						return cli.Exit(result.Message, 1)
+					}
+					return nil
+				},
+			},
+			{
+				Name:    "log",
+				Usage:   "Show completed to-dos from the Logbook",
+				Aliases: []string{"lg"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "date",
+						Aliases:     []string{"d"},
+						Usage:       "show completed to-dos from `TIMEFRAME` (today, this week, this month)",
+						Required:    true,
+						Destination: &dateFilter,
+					},
+					&cli.StringFlag{
+						Name:        "area",
+						Aliases:     []string{"a"},
+						Usage:       "filter by `AREA` name",
+						Destination: &areaFilter,
+					},
+					&cli.StringFlag{
+						Name:        "project",
+						Aliases:     []string{"p"},
+						Usage:       "filter by `PROJECT` name",
+						Destination: &projectFilter,
+					},
+					&cli.BoolFlag{
+						Name:        "jsonl",
+						Usage:       "output todos in JSONL format",
+						Destination: &jsonl,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					if dateFilter != "today" && dateFilter != "this week" && dateFilter != "this month" {
+						return cli.Exit("ERROR: --date must be one of: today, this week, this month", 1)
+					}
+					todos, err := getCompletedTodosFiltered(dateFilter, areaFilter, projectFilter)
+					if err != nil {
+						if strings.HasPrefix(err.Error(), "ERROR:") {
+							return cli.Exit(err.Error(), 1)
+						}
+						return err
+					}
+					_ = todos
+					_ = jsonl
 					return nil
 				},
 			},
@@ -346,6 +440,8 @@ func TestCommandAliases(t *testing.T) {
 		{"add alias", []string{"things", "a", "--name", "Test"}, `To-do added successfully to list "inbox"!`},
 		{"delete alias", []string{"things", "d", "--list", "Inbox", "--name", "Test"}, `To-do "Test" deleted successfully from list "Inbox"!`},
 		{"move alias", []string{"things", "m", "--from", "Inbox", "--to", "Work", "--name", "Test"}, `To-do "Test" moved successfully from list "Inbox" to list "Work"!`},
+		{"rename alias", []string{"things", "r", "--list", "Inbox", "--name", "Old", "--new-name", "New"}, "SUCCESS"},
+		{"log alias", []string{"things", "lg", "--date", "today"}, `[{"name":"Completed task","status":"completed"}]`},
 	}
 
 	for _, tt := range tests {
@@ -453,5 +549,230 @@ func TestFlagValidation(t *testing.T) {
 				t.Error("expected error for missing required flag")
 			}
 		})
+	}
+}
+
+func TestRenameCommand_Success(t *testing.T) {
+	cleanup := setupMockExecutorIntegration("SUCCESS", nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "rename", "--list", "Inbox", "--name", "Old Name", "--new-name", "New Name"})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRenameCommand_Error(t *testing.T) {
+	cleanup := setupMockExecutorIntegration(`ERROR: To-do "NonExistent" not found in list "Inbox"`, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "rename", "--list", "Inbox", "--name", "NonExistent", "--new-name", "New Name"})
+
+	if err == nil {
+		t.Error("expected cli.Exit error for non-existent todo")
+	}
+
+	if exitErr, ok := err.(cli.ExitCoder); ok {
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
+		}
+	} else {
+		t.Errorf("expected cli.ExitCoder, got %T", err)
+	}
+}
+
+func TestRenameCommand_MissingFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"missing list", []string{"things", "rename", "--name", "Test", "--new-name", "New"}},
+		{"missing name", []string{"things", "rename", "--list", "Inbox", "--new-name", "New"}},
+		{"missing new-name", []string{"things", "rename", "--list", "Inbox", "--name", "Test"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutorIntegration("", nil)
+			defer cleanup()
+
+			app := createTestApp()
+			err := app.Run(context.Background(), tt.args)
+
+			if err == nil {
+				t.Error("expected error for missing required flag")
+			}
+		})
+	}
+}
+
+func TestRenameCommand_Alias(t *testing.T) {
+	cleanup := setupMockExecutorIntegration("SUCCESS", nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "r", "--list", "Inbox", "--name", "Old", "--new-name", "New"})
+	if err != nil {
+		t.Errorf("rename alias should work: %v", err)
+	}
+}
+
+func TestLogCommand_Success(t *testing.T) {
+	mockOutput := `[{"name":"Completed task 1","status":"completed"},{"name":"Completed task 2","status":"completed"}]`
+
+	tests := []struct {
+		name       string
+		args       []string
+		mockOutput string
+	}{
+		{
+			name:       "log today",
+			args:       []string{"things", "log", "--date", "today"},
+			mockOutput: mockOutput,
+		},
+		{
+			name:       "log this week",
+			args:       []string{"things", "log", "--date", "this week"},
+			mockOutput: mockOutput,
+		},
+		{
+			name:       "log this month",
+			args:       []string{"things", "log", "--date", "this month"},
+			mockOutput: mockOutput,
+		},
+		{
+			name:       "log with date alias",
+			args:       []string{"things", "log", "-d", "today"},
+			mockOutput: mockOutput,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutorIntegration(tt.mockOutput, nil)
+			defer cleanup()
+
+			app := createTestApp()
+			err := app.Run(context.Background(), tt.args)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestLogCommand_WithFilters(t *testing.T) {
+	mockOutput := `[{"name":"Task 1","status":"completed","area":"Work"}]`
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "log with area filter",
+			args: []string{"things", "log", "--date", "today", "--area", "Work"},
+		},
+		{
+			name: "log with project filter",
+			args: []string{"things", "log", "--date", "today", "--project", "Project A"},
+		},
+		{
+			name: "log with both filters",
+			args: []string{"things", "log", "--date", "today", "--area", "Work", "--project", "Project A"},
+		},
+		{
+			name: "log with area alias",
+			args: []string{"things", "log", "-d", "today", "-a", "Work"},
+		},
+		{
+			name: "log with project alias",
+			args: []string{"things", "log", "-d", "today", "-p", "Project A"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutorIntegration(mockOutput, nil)
+			defer cleanup()
+
+			app := createTestApp()
+			err := app.Run(context.Background(), tt.args)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestLogCommand_InvalidDateFilter(t *testing.T) {
+	cleanup := setupMockExecutorIntegration("", nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "log", "--date", "yesterday"})
+
+	if err == nil {
+		t.Error("expected error for invalid date filter")
+	}
+
+	if exitErr, ok := err.(cli.ExitCoder); ok {
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
+		}
+		if !strings.Contains(err.Error(), "ERROR:") {
+			t.Error("error should contain ERROR message")
+		}
+	} else {
+		t.Errorf("expected cli.ExitCoder, got %T", err)
+	}
+}
+
+func TestLogCommand_MissingDateFlag(t *testing.T) {
+	cleanup := setupMockExecutorIntegration("", nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "log"})
+
+	if err == nil {
+		t.Error("expected error for missing required --date flag")
+	}
+}
+
+func TestLogCommand_Alias(t *testing.T) {
+	mockOutput := `[{"name":"Completed task","status":"completed"}]`
+	cleanup := setupMockExecutorIntegration(mockOutput, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "lg", "--date", "today"})
+	if err != nil {
+		t.Errorf("log alias should work: %v", err)
+	}
+}
+
+func TestJSONLOutput_Show(t *testing.T) {
+	mockOutput := `[{"name":"Task 1","status":"open"},{"name":"Task 2","status":"completed"}]`
+	cleanup := setupMockExecutorIntegration(mockOutput, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "show", "--list", "Work", "--jsonl"})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestJSONLOutput_Log(t *testing.T) {
+	mockOutput := `[{"name":"Completed task","status":"completed"}]`
+	cleanup := setupMockExecutorIntegration(mockOutput, nil)
+	defer cleanup()
+
+	app := createTestApp()
+	err := app.Run(context.Background(), []string{"things", "log", "--date", "today", "--jsonl"})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
