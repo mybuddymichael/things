@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -46,31 +45,26 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					if jsonl {
-						todos, err := getTodosFromListJSON(listName)
-						if err != nil {
-							if strings.HasPrefix(err.Error(), "ERROR:") {
-								return cli.Exit(err.Error()+"\nUse `things list` to see available lists.", 1)
-							}
-							return err
+					todos, err := getTodosFromList(listName)
+					if err != nil {
+						if strings.HasPrefix(err.Error(), "ERROR:") {
+							return cli.Exit(err.Error()+"\nUse `things list` to see available lists.", 1)
 						}
+						return err
+					}
+
+					if jsonl {
 						for _, todo := range todos {
-							jsonBytes, err := json.Marshal(todo)
+							jsonLine, err := formatTodoAsJSONL(todo)
 							if err != nil {
-								return fmt.Errorf("error marshaling todo: %v", err)
+								return err
 							}
-							fmt.Println(string(jsonBytes))
+							fmt.Println(jsonLine)
 						}
 						return nil
 					}
 
-					output, err := getTodosFromList(listName)
-					if err != nil {
-						return err
-					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output+"\nUse `things list` to see available lists.", 1)
-					}
+					output := formatTodosForDisplay(todos)
 					fmt.Println(output)
 					return nil
 				},
@@ -102,14 +96,14 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := addTodoToList(listName, todoName, tags)
+					result, err := addTodoToList(listName, todoName, tags)
 					if err != nil {
 						return err
 					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output, 1)
+					if !result.Success {
+						return cli.Exit(result.Message, 1)
 					}
-					fmt.Println(output)
+					fmt.Println(formatOperationResult(result))
 					return nil
 				},
 			},
@@ -134,14 +128,14 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := deleteTodoFromList(listName, todoName)
+					result, err := deleteTodoFromList(listName, todoName)
 					if err != nil {
 						return err
 					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output, 1)
+					if !result.Success {
+						return cli.Exit(result.Message, 1)
 					}
-					fmt.Println(output)
+					fmt.Println(formatOperationResult(result))
 					return nil
 				},
 			},
@@ -171,14 +165,14 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := moveTodoBetweenLists(fromList, toList, todoName)
+					result, err := moveTodoBetweenLists(fromList, toList, todoName)
 					if err != nil {
 						return err
 					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output, 1)
+					if !result.Success {
+						return cli.Exit(result.Message, 1)
 					}
-					fmt.Println(output)
+					fmt.Println(formatOperationResult(result))
 					return nil
 				},
 			},
@@ -209,14 +203,14 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := renameTodoInList(listName, todoName, newName)
+					result, err := renameTodoInList(listName, todoName, newName)
 					if err != nil {
 						return err
 					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output, 1)
+					if !result.Success {
+						return cli.Exit(result.Message, 1)
 					}
-					fmt.Println(output)
+					fmt.Println(formatOperationResult(result))
 					return nil
 				},
 			},

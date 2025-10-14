@@ -74,13 +74,14 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := getTodosFromList(listName)
+					todos, err := getTodosFromList(listName)
 					if err != nil {
+						if strings.HasPrefix(err.Error(), "ERROR:") {
+							return cli.Exit(err.Error()+"\nUse `things list` to see available lists.", 1)
+						}
 						return err
 					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output+"\nUse `things list` to see available lists.", 1)
-					}
+					_ = todos
 					return nil
 				},
 			},
@@ -111,12 +112,12 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := addTodoToList(listName, todoName, "")
+					result, err := addTodoToList(listName, todoName, "")
 					if err != nil {
 						return err
 					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output, 1)
+					if !result.Success {
+						return cli.Exit(result.Message, 1)
 					}
 					return nil
 				},
@@ -142,12 +143,12 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := deleteTodoFromList(listName, todoName)
+					result, err := deleteTodoFromList(listName, todoName)
 					if err != nil {
 						return err
 					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output, 1)
+					if !result.Success {
+						return cli.Exit(result.Message, 1)
 					}
 					return nil
 				},
@@ -178,12 +179,12 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					output, err := moveTodoBetweenLists(fromList, toList, todoName)
+					result, err := moveTodoBetweenLists(fromList, toList, todoName)
 					if err != nil {
 						return err
 					}
-					if strings.HasPrefix(output, "ERROR:") {
-						return cli.Exit(output, 1)
+					if !result.Success {
+						return cli.Exit(result.Message, 1)
 					}
 					return nil
 				},
@@ -215,7 +216,7 @@ func TestShowCommand_RequiredFlag(t *testing.T) {
 }
 
 func TestShowCommand_Success(t *testing.T) {
-	cleanup := setupMockExecutorIntegration("Buy groceries\nWrite report", nil)
+	cleanup := setupMockExecutorIntegration(`[{"name":"Buy groceries","status":"open"},{"name":"Write report","status":"open"}]`, nil)
 	defer cleanup()
 
 	app := createTestApp()
@@ -337,18 +338,19 @@ func TestDeleteCommand_Error(t *testing.T) {
 
 func TestCommandAliases(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name       string
+		args       []string
+		mockOutput string
 	}{
-		{"show alias", []string{"things", "s", "--list", "Work"}},
-		{"add alias", []string{"things", "a", "--name", "Test"}},
-		{"delete alias", []string{"things", "d", "--list", "Inbox", "--name", "Test"}},
-		{"move alias", []string{"things", "m", "--from", "Inbox", "--to", "Work", "--name", "Test"}},
+		{"show alias", []string{"things", "s", "--list", "Work"}, `[{"name":"Test","status":"open"}]`},
+		{"add alias", []string{"things", "a", "--name", "Test"}, `To-do added successfully to list "inbox"!`},
+		{"delete alias", []string{"things", "d", "--list", "Inbox", "--name", "Test"}, `To-do "Test" deleted successfully from list "Inbox"!`},
+		{"move alias", []string{"things", "m", "--from", "Inbox", "--to", "Work", "--name", "Test"}, `To-do "Test" moved successfully from list "Inbox" to list "Work"!`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cleanup := setupMockExecutorIntegration("success", nil)
+			cleanup := setupMockExecutorIntegration(tt.mockOutput, nil)
 			defer cleanup()
 
 			app := createTestApp()
