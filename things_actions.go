@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // CommandExecutor interface allows mocking exec.Command in tests
@@ -22,10 +23,26 @@ func (e *DefaultExecutor) Execute(name string, args ...string) ([]byte, error) {
 // Global executor - can be replaced in tests
 var executor CommandExecutor = &DefaultExecutor{}
 
-// Todo represents a Things.app todo item
+// Todo represents a Things.app todo item with all available properties
 type Todo struct {
+	// Basic properties
 	Name   string `json:"name"`
-	Status string `json:"status"`
+	Notes  string `json:"notes,omitempty"`
+	Status string `json:"status"` // "open", "completed", "canceled"
+
+	// Date properties
+	CreationDate     *time.Time `json:"creationDate,omitempty"`
+	ModificationDate *time.Time `json:"modificationDate,omitempty"`
+	DueDate          *time.Time `json:"dueDate,omitempty"`
+	CompletionDate   *time.Time `json:"completionDate,omitempty"`
+	CancellationDate *time.Time `json:"cancellationDate,omitempty"`
+
+	// Tags
+	TagNames []string `json:"tagNames,omitempty"`
+
+	// Parent references
+	Area    string `json:"area,omitempty"`
+	Project string `json:"project,omitempty"`
 }
 
 // OperationResult represents the result of a Things.app operation
@@ -44,10 +61,38 @@ try {
     var todos = list.toDos();
     var result = [];
     for (var i = 0; i < todos.length; i++) {
-        result.push({
-            name: todos[i].name(),
-            status: todos[i].status()
-        });
+        var todo = todos[i];
+        var item = {
+            name: todo.name(),
+            status: todo.status()
+        };
+
+        // Add optional string properties
+        if (todo.notes()) item.notes = todo.notes();
+
+        // Add date properties (convert to ISO 8601 strings)
+        if (todo.creationDate()) item.creationDate = todo.creationDate().toISOString();
+        if (todo.modificationDate()) item.modificationDate = todo.modificationDate().toISOString();
+        if (todo.dueDate()) item.dueDate = todo.dueDate().toISOString();
+        if (todo.completionDate()) item.completionDate = todo.completionDate().toISOString();
+        if (todo.cancellationDate()) item.cancellationDate = todo.cancellationDate().toISOString();
+
+        // Add tag names (convert string to array if needed)
+        var tags = todo.tagNames();
+        if (tags) {
+            if (typeof tags === 'string') {
+                // Split comma-separated string into array
+                item.tagNames = tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
+            } else if (tags.length > 0) {
+                item.tagNames = tags;
+            }
+        }
+
+        // Add parent references
+        if (todo.area && todo.area()) item.area = todo.area().name();
+        if (todo.project && todo.project()) item.project = todo.project().name();
+
+        result.push(item);
     }
     JSON.stringify(result);
 } catch (e) {
