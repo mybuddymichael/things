@@ -23,6 +23,40 @@ func (e *DefaultExecutor) Execute(name string, args ...string) ([]byte, error) {
 // Global executor - can be replaced in tests
 var executor CommandExecutor = &DefaultExecutor{}
 
+// JXA code snippet for building a todo item object
+// This is the common logic extracted to avoid duplication
+const jxaTodoObjectBuilder = `
+        var item = {
+            name: todo.name(),
+            status: todo.status()
+        };
+
+        // Add optional string properties
+        if (todo.notes()) item.notes = todo.notes();
+
+        // Add date properties (convert to ISO 8601 strings)
+        if (todo.creationDate()) item.creationDate = todo.creationDate().toISOString();
+        if (todo.modificationDate()) item.modificationDate = todo.modificationDate().toISOString();
+        if (todo.dueDate()) item.dueDate = todo.dueDate().toISOString();
+        if (completionDate) item.completionDate = completionDate.toISOString();
+        if (todo.cancellationDate()) item.cancellationDate = todo.cancellationDate().toISOString();
+
+        // Add tag names (convert string to array if needed)
+        var tags = todo.tagNames();
+        if (tags) {
+            if (typeof tags === 'string') {
+                item.tagNames = tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
+            } else if (tags.length > 0) {
+                item.tagNames = tags;
+            }
+        }
+
+        // Add parent references
+        if (todo.area && todo.area()) item.area = todo.area().name();
+        if (todo.project && todo.project()) item.project = todo.project().name();
+
+        result.push(item);`
+
 // Todo represents a Things.app todo item with all available properties
 type Todo struct {
 	// Basic properties
@@ -51,54 +85,40 @@ type OperationResult struct {
 	Message string
 }
 
-// getTodosFromList retrieves all todos from the specified list in Things.app as structured data
-func getTodosFromList(listName string) ([]Todo, error) {
+// getTodosFromListWithFilter retrieves todos from a list, optionally filtered by completion date
+// If filterDateISO is empty, all todos are returned; otherwise, only todos completed after the filter date
+func getTodosFromListWithFilter(listName, filterDateISO string) ([]Todo, error) {
 	escapedListName := strings.ReplaceAll(listName, "'", "\\'")
+
+	var filterSetup, filterCheck string
+	if filterDateISO != "" {
+		filterSetup = fmt.Sprintf("var filterDate = new Date('%s');", filterDateISO)
+		filterCheck = `
+        // Skip if no completion date or before filter date
+        if (!completionDate || completionDate < filterDate) {
+            continue;
+        }`
+	}
+
 	jxaScript := fmt.Sprintf(`
 try {
     var app = Application('Things3');
     var list = app.lists.byName('%s');
     var todos = list.toDos();
     var result = [];
+    %s
+
     for (var i = 0; i < todos.length; i++) {
         var todo = todos[i];
-        var item = {
-            name: todo.name(),
-            status: todo.status()
-        };
-
-        // Add optional string properties
-        if (todo.notes()) item.notes = todo.notes();
-
-        // Add date properties (convert to ISO 8601 strings)
-        if (todo.creationDate()) item.creationDate = todo.creationDate().toISOString();
-        if (todo.modificationDate()) item.modificationDate = todo.modificationDate().toISOString();
-        if (todo.dueDate()) item.dueDate = todo.dueDate().toISOString();
-        if (todo.completionDate()) item.completionDate = todo.completionDate().toISOString();
-        if (todo.cancellationDate()) item.cancellationDate = todo.cancellationDate().toISOString();
-
-        // Add tag names (convert string to array if needed)
-        var tags = todo.tagNames();
-        if (tags) {
-            if (typeof tags === 'string') {
-                // Split comma-separated string into array
-                item.tagNames = tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
-            } else if (tags.length > 0) {
-                item.tagNames = tags;
-            }
-        }
-
-        // Add parent references
-        if (todo.area && todo.area()) item.area = todo.area().name();
-        if (todo.project && todo.project()) item.project = todo.project().name();
-
-        result.push(item);
+        var completionDate = todo.completionDate();
+%s
+%s
     }
     JSON.stringify(result);
 } catch (e) {
     'ERROR: List "%s" not found';
 }
-`, escapedListName, escapedListName)
+`, escapedListName, filterSetup, filterCheck, jxaTodoObjectBuilder, escapedListName)
 
 	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
 	if err != nil {
@@ -116,6 +136,11 @@ try {
 	}
 
 	return todos, nil
+}
+
+// getTodosFromList retrieves all todos from the specified list in Things.app as structured data
+func getTodosFromList(listName string) ([]Todo, error) {
+	return getTodosFromListWithFilter(listName, "")
 }
 
 // addTodoToList adds a new todo to the specified list in Things.app
@@ -340,76 +365,5 @@ func calculateStartDate(filter string) time.Time {
 func getCompletedTodos(dateFilter string) ([]Todo, error) {
 	startDate := calculateStartDate(dateFilter)
 	startDateISO := startDate.Format(time.RFC3339)
-
-	// Filter in JXA for performance (10x+ speedup vs filtering in Go)
-	jxaScript := fmt.Sprintf(`
-try {
-    var app = Application('Things3');
-    var list = app.lists.byName('Logbook');
-    var todos = list.toDos();
-    var result = [];
-    var filterDate = new Date('%s');
-
-    for (var i = 0; i < todos.length; i++) {
-        var todo = todos[i];
-        var completionDate = todo.completionDate();
-
-        // Skip if no completion date or before filter date
-        if (!completionDate || completionDate < filterDate) {
-            continue;
-        }
-
-        var item = {
-            name: todo.name(),
-            status: todo.status()
-        };
-
-        // Add optional string properties
-        if (todo.notes()) item.notes = todo.notes();
-
-        // Add date properties (convert to ISO 8601 strings)
-        if (todo.creationDate()) item.creationDate = todo.creationDate().toISOString();
-        if (todo.modificationDate()) item.modificationDate = todo.modificationDate().toISOString();
-        if (todo.dueDate()) item.dueDate = todo.dueDate().toISOString();
-        if (completionDate) item.completionDate = completionDate.toISOString();
-        if (todo.cancellationDate()) item.cancellationDate = todo.cancellationDate().toISOString();
-
-        // Add tag names (convert string to array if needed)
-        var tags = todo.tagNames();
-        if (tags) {
-            if (typeof tags === 'string') {
-                item.tagNames = tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
-            } else if (tags.length > 0) {
-                item.tagNames = tags;
-            }
-        }
-
-        // Add parent references
-        if (todo.area && todo.area()) item.area = todo.area().name();
-        if (todo.project && todo.project()) item.project = todo.project().name();
-
-        result.push(item);
-    }
-    JSON.stringify(result);
-} catch (e) {
-    'ERROR: ' + e.message;
-}
-`, startDateISO)
-
-	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
-	if err != nil {
-		return nil, fmt.Errorf("error running JXA script: %v", err)
-	}
-
-	outputStr := strings.TrimSpace(string(output))
-	if strings.HasPrefix(outputStr, "ERROR:") {
-		return nil, fmt.Errorf("%s", outputStr)
-	}
-
-	var todos []Todo
-	if err := json.Unmarshal([]byte(outputStr), &todos); err != nil {
-		return nil, fmt.Errorf("error parsing JSON: %v", err)
-	}
-
-	return todos, nil
+	return getTodosFromListWithFilter("Logbook", startDateISO)
 }
