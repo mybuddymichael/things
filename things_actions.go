@@ -343,6 +343,30 @@ try {
 	}, nil
 }
 
+// logCompletedNow tells Things.app to move completed todos to the Logbook
+func logCompletedNow() error {
+	jxaScript := `
+try {
+    var app = Application('Things3');
+    app.logCompletedNow();
+    'SUCCESS';
+} catch (e) {
+    'ERROR: ' + e.message;
+}
+`
+	output, err := executor.Execute("osascript", "-l", "JavaScript", "-e", jxaScript)
+	if err != nil {
+		return fmt.Errorf("error running JXA script: %v", err)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if strings.HasPrefix(outputStr, "ERROR:") {
+		return fmt.Errorf("%s", outputStr)
+	}
+
+	return nil
+}
+
 // calculateStartDate returns the start date based on the filter
 func calculateStartDate(filter string) time.Time {
 	now := time.Now()
@@ -363,6 +387,11 @@ func calculateStartDate(filter string) time.Time {
 
 // getCompletedTodos retrieves completed todos from the Logbook filtered by date
 func getCompletedTodos(dateFilter string) ([]Todo, error) {
+	// First, ensure all completed todos are moved to the Logbook
+	if err := logCompletedNow(); err != nil {
+		return nil, err
+	}
+
 	startDate := calculateStartDate(dateFilter)
 	startDateISO := startDate.Format(time.RFC3339)
 	return getTodosFromListWithFilter("Logbook", startDateISO)

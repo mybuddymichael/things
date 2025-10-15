@@ -13,13 +13,23 @@ import (
 
 // setupMockExecutor sets up a mock executor for testing and disables os.Exit
 func setupMockExecutorIntegration(output string, err error) func() {
+	return setupMockExecutorIntegrationMulti([]string{output}, []error{err})
+}
+
+// setupMockExecutorIntegrationMulti sets up a mock executor with multiple outputs for testing and disables os.Exit
+func setupMockExecutorIntegrationMulti(outputs []string, errors []error) func() {
 	originalExecutor := executor
 	originalOsExiter := cli.OsExiter
 	originalStderr := os.Stderr
 
+	byteOutputs := make([][]byte, len(outputs))
+	for i, output := range outputs {
+		byteOutputs[i] = []byte(output)
+	}
+
 	executor = &MockExecutor{
-		output: []byte(output),
-		err:    err,
+		outputs: byteOutputs,
+		errors:  errors,
 	}
 
 	// Override OsExiter to prevent actual exit during tests
@@ -432,21 +442,22 @@ func TestDeleteCommand_Error(t *testing.T) {
 
 func TestCommandAliases(t *testing.T) {
 	tests := []struct {
-		name       string
-		args       []string
-		mockOutput string
+		name        string
+		args        []string
+		mockOutputs []string
 	}{
-		{"show alias", []string{"things", "s", "--list", "Work"}, `[{"name":"Test","status":"open"}]`},
-		{"add alias", []string{"things", "a", "--name", "Test"}, `To-do added successfully to list "inbox"!`},
-		{"delete alias", []string{"things", "d", "--list", "Inbox", "--name", "Test"}, `To-do "Test" deleted successfully from list "Inbox"!`},
-		{"move alias", []string{"things", "m", "--from", "Inbox", "--to", "Work", "--name", "Test"}, `To-do "Test" moved successfully from list "Inbox" to list "Work"!`},
-		{"rename alias", []string{"things", "r", "--list", "Inbox", "--name", "Old", "--new-name", "New"}, "SUCCESS"},
-		{"log alias", []string{"things", "lg", "--date", "today"}, `[{"name":"Completed task","status":"completed"}]`},
+		{"show alias", []string{"things", "s", "--list", "Work"}, []string{`[{"name":"Test","status":"open"}]`}},
+		{"add alias", []string{"things", "a", "--name", "Test"}, []string{`To-do added successfully to list "inbox"!`}},
+		{"delete alias", []string{"things", "d", "--list", "Inbox", "--name", "Test"}, []string{`To-do "Test" deleted successfully from list "Inbox"!`}},
+		{"move alias", []string{"things", "m", "--from", "Inbox", "--to", "Work", "--name", "Test"}, []string{`To-do "Test" moved successfully from list "Inbox" to list "Work"!`}},
+		{"rename alias", []string{"things", "r", "--list", "Inbox", "--name", "Old", "--new-name", "New"}, []string{"SUCCESS"}},
+		{"log alias", []string{"things", "lg", "--date", "today"}, []string{"SUCCESS", `[{"name":"Completed task","status":"completed"}]`}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cleanup := setupMockExecutorIntegration(tt.mockOutput, nil)
+			errors := make([]error, len(tt.mockOutputs))
+			cleanup := setupMockExecutorIntegrationMulti(tt.mockOutputs, errors)
 			defer cleanup()
 
 			app := createTestApp()
@@ -623,35 +634,31 @@ func TestLogCommand_Success(t *testing.T) {
 	mockOutput := `[{"name":"Completed task 1","status":"completed"},{"name":"Completed task 2","status":"completed"}]`
 
 	tests := []struct {
-		name       string
-		args       []string
-		mockOutput string
+		name string
+		args []string
 	}{
 		{
-			name:       "log today",
-			args:       []string{"things", "log", "--date", "today"},
-			mockOutput: mockOutput,
+			name: "log today",
+			args: []string{"things", "log", "--date", "today"},
 		},
 		{
-			name:       "log this week",
-			args:       []string{"things", "log", "--date", "this week"},
-			mockOutput: mockOutput,
+			name: "log this week",
+			args: []string{"things", "log", "--date", "this week"},
 		},
 		{
-			name:       "log this month",
-			args:       []string{"things", "log", "--date", "this month"},
-			mockOutput: mockOutput,
+			name: "log this month",
+			args: []string{"things", "log", "--date", "this month"},
 		},
 		{
-			name:       "log with date alias",
-			args:       []string{"things", "log", "-d", "today"},
-			mockOutput: mockOutput,
+			name: "log with date alias",
+			args: []string{"things", "log", "-d", "today"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cleanup := setupMockExecutorIntegration(tt.mockOutput, nil)
+			// Mock both logCompletedNow() and getTodosFromListWithFilter() calls
+			cleanup := setupMockExecutorIntegrationMulti([]string{"SUCCESS", mockOutput}, []error{nil, nil})
 			defer cleanup()
 
 			app := createTestApp()
@@ -694,7 +701,8 @@ func TestLogCommand_WithFilters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cleanup := setupMockExecutorIntegration(mockOutput, nil)
+			// Mock both logCompletedNow() and getTodosFromListWithFilter() calls
+			cleanup := setupMockExecutorIntegrationMulti([]string{"SUCCESS", mockOutput}, []error{nil, nil})
 			defer cleanup()
 
 			app := createTestApp()
@@ -743,7 +751,8 @@ func TestLogCommand_MissingDateFlag(t *testing.T) {
 
 func TestLogCommand_Alias(t *testing.T) {
 	mockOutput := `[{"name":"Completed task","status":"completed"}]`
-	cleanup := setupMockExecutorIntegration(mockOutput, nil)
+	// Mock both logCompletedNow() and getTodosFromListWithFilter() calls
+	cleanup := setupMockExecutorIntegrationMulti([]string{"SUCCESS", mockOutput}, []error{nil, nil})
 	defer cleanup()
 
 	app := createTestApp()
@@ -767,7 +776,8 @@ func TestJSONLOutput_Show(t *testing.T) {
 
 func TestJSONLOutput_Log(t *testing.T) {
 	mockOutput := `[{"name":"Completed task","status":"completed"}]`
-	cleanup := setupMockExecutorIntegration(mockOutput, nil)
+	// Mock both logCompletedNow() and getTodosFromListWithFilter() calls
+	cleanup := setupMockExecutorIntegrationMulti([]string{"SUCCESS", mockOutput}, []error{nil, nil})
 	defer cleanup()
 
 	app := createTestApp()

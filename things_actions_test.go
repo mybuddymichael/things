@@ -8,20 +8,45 @@ import (
 
 // MockExecutor implements CommandExecutor for testing
 type MockExecutor struct {
-	output []byte
-	err    error
+	outputs   [][]byte
+	errors    []error
+	callCount int
 }
 
 func (m *MockExecutor) Execute(name string, args ...string) ([]byte, error) {
-	return m.output, m.err
+	if m.callCount >= len(m.outputs) {
+		// If we run out of mock outputs, return the last one
+		if len(m.outputs) > 0 {
+			lastIdx := len(m.outputs) - 1
+			m.callCount++
+			return m.outputs[lastIdx], m.errors[lastIdx]
+		}
+		return nil, nil
+	}
+
+	output := m.outputs[m.callCount]
+	err := m.errors[m.callCount]
+	m.callCount++
+	return output, err
 }
 
-// Helper to set up mock executor and restore original after test
+// Helper to set up mock executor with a single output and restore original after test
 func setupMockExecutor(output string, err error) func() {
+	return setupMockExecutorMulti([]string{output}, []error{err})
+}
+
+// Helper to set up mock executor with multiple outputs and restore original after test
+func setupMockExecutorMulti(outputs []string, errors []error) func() {
 	originalExecutor := executor
+
+	byteOutputs := make([][]byte, len(outputs))
+	for i, output := range outputs {
+		byteOutputs[i] = []byte(output)
+	}
+
 	executor = &MockExecutor{
-		output: []byte(output),
-		err:    err,
+		outputs: byteOutputs,
+		errors:  errors,
 	}
 	return func() {
 		executor = originalExecutor
@@ -705,6 +730,60 @@ func TestCalculateStartDate(t *testing.T) {
 	}
 }
 
+func TestLogCompletedNow_Success(t *testing.T) {
+	cleanup := setupMockExecutor("SUCCESS", nil)
+	defer cleanup()
+
+	err := logCompletedNow()
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLogCompletedNow_Errors(t *testing.T) {
+	tests := []struct {
+		name      string
+		output    string
+		execError error
+		expectErr bool
+	}{
+		{
+			name:      "exec command fails",
+			execError: errors.New("osascript not found"),
+			expectErr: true,
+		},
+		{
+			name:      "Things.app returns error",
+			output:    "ERROR: Things.app is not running",
+			expectErr: true,
+		},
+		{
+			name:      "JXA script error",
+			output:    "ERROR: logCompletedNow is not a function",
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutor(tt.output, tt.execError)
+			defer cleanup()
+
+			err := logCompletedNow()
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestGetCompletedTodos(t *testing.T) {
 	// Mock output with completed todos
 	mockOutput := `[
@@ -713,40 +792,52 @@ func TestGetCompletedTodos(t *testing.T) {
 	]`
 
 	tests := []struct {
-		name       string
-		dateFilter string
-		mockOutput string
-		expectErr  bool
+		name        string
+		dateFilter  string
+		mockOutputs []string
+		mockErrors  []error
+		expectErr   bool
 	}{
 		{
-			name:       "get completed todos for today",
-			dateFilter: "today",
-			mockOutput: mockOutput,
-			expectErr:  false,
+			name:        "get completed todos for today",
+			dateFilter:  "today",
+			mockOutputs: []string{"SUCCESS", mockOutput},
+			mockErrors:  []error{nil, nil},
+			expectErr:   false,
 		},
 		{
-			name:       "get completed todos for this week",
-			dateFilter: "this week",
-			mockOutput: mockOutput,
-			expectErr:  false,
+			name:        "get completed todos for this week",
+			dateFilter:  "this week",
+			mockOutputs: []string{"SUCCESS", mockOutput},
+			mockErrors:  []error{nil, nil},
+			expectErr:   false,
 		},
 		{
-			name:       "get completed todos for this month",
-			dateFilter: "this month",
-			mockOutput: mockOutput,
-			expectErr:  false,
+			name:        "get completed todos for this month",
+			dateFilter:  "this month",
+			mockOutputs: []string{"SUCCESS", mockOutput},
+			mockErrors:  []error{nil, nil},
+			expectErr:   false,
 		},
 		{
-			name:       "error from API",
-			dateFilter: "today",
-			mockOutput: `ERROR: List "Logbook" not found`,
-			expectErr:  true,
+			name:        "error from logCompletedNow",
+			dateFilter:  "today",
+			mockOutputs: []string{"ERROR: Things.app is not running"},
+			mockErrors:  []error{nil},
+			expectErr:   true,
+		},
+		{
+			name:        "error from getTodosFromListWithFilter",
+			dateFilter:  "today",
+			mockOutputs: []string{"SUCCESS", `ERROR: List "Logbook" not found`},
+			mockErrors:  []error{nil, nil},
+			expectErr:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cleanup := setupMockExecutor(tt.mockOutput, nil)
+			cleanup := setupMockExecutorMulti(tt.mockOutputs, tt.mockErrors)
 			defer cleanup()
 
 			result, err := getCompletedTodos(tt.dateFilter)
@@ -779,27 +870,23 @@ func TestGetCompletedTodosFiltered(t *testing.T) {
 		dateFilter    string
 		areaFilter    string
 		projectFilter string
-		mockOutput    string
 		expectCount   int
 	}{
 		{
 			name:        "no filters",
 			dateFilter:  "today",
-			mockOutput:  mockOutput,
 			expectCount: 3,
 		},
 		{
 			name:        "filter by area",
 			dateFilter:  "today",
 			areaFilter:  "Work",
-			mockOutput:  mockOutput,
 			expectCount: 2,
 		},
 		{
 			name:          "filter by project",
 			dateFilter:    "today",
 			projectFilter: "Project A",
-			mockOutput:    mockOutput,
 			expectCount:   1,
 		},
 		{
@@ -807,21 +894,20 @@ func TestGetCompletedTodosFiltered(t *testing.T) {
 			dateFilter:    "today",
 			areaFilter:    "Work",
 			projectFilter: "Project B",
-			mockOutput:    mockOutput,
 			expectCount:   1,
 		},
 		{
 			name:        "no matches",
 			dateFilter:  "today",
 			areaFilter:  "NonExistent",
-			mockOutput:  mockOutput,
 			expectCount: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cleanup := setupMockExecutor(tt.mockOutput, nil)
+			// Mock both logCompletedNow() and getTodosFromListWithFilter() calls
+			cleanup := setupMockExecutorMulti([]string{"SUCCESS", mockOutput}, []error{nil, nil})
 			defer cleanup()
 
 			result, err := getCompletedTodosFiltered(tt.dateFilter, tt.areaFilter, tt.projectFilter)
