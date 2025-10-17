@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -986,5 +987,196 @@ func TestGetTodosWithRichData(t *testing.T) {
 	}
 	if len(simpleTodo.TagNames) != 0 {
 		t.Error("expected empty tags")
+	}
+}
+
+func TestParseDateFilter(t *testing.T) {
+	tests := []struct {
+		name          string
+		filter        string
+		expectError   bool
+		expectSingle  bool
+		validateStart func(time.Time) bool
+	}{
+		{
+			name:         "keyword: today",
+			filter:       "today",
+			expectError:  false,
+			expectSingle: false,
+			validateStart: func(t time.Time) bool {
+				// Should be midnight today
+				now := time.Now()
+				expected := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+				return t.Equal(expected)
+			},
+		},
+		{
+			name:         "keyword: this week",
+			filter:       "this week",
+			expectError:  false,
+			expectSingle: false,
+			validateStart: func(t time.Time) bool {
+				// Should be most recent Sunday
+				return t.Weekday() == time.Sunday && t.Hour() == 0 && t.Minute() == 0
+			},
+		},
+		{
+			name:         "keyword: this month",
+			filter:       "this month",
+			expectError:  false,
+			expectSingle: false,
+			validateStart: func(t time.Time) bool {
+				// Should be first day of current month
+				now := time.Now()
+				return t.Year() == now.Year() && t.Month() == now.Month() && t.Day() == 1
+			},
+		},
+		{
+			name:         "YYYY-MM-DD date",
+			filter:       "2024-01-15",
+			expectError:  false,
+			expectSingle: true,
+			validateStart: func(t time.Time) bool {
+				expected := time.Date(2024, 1, 15, 0, 0, 0, 0, time.Local)
+				return t.Equal(expected)
+			},
+		},
+		{
+			name:         "YYYY-MM-DD different date",
+			filter:       "2023-12-25",
+			expectError:  false,
+			expectSingle: true,
+			validateStart: func(t time.Time) bool {
+				expected := time.Date(2023, 12, 25, 0, 0, 0, 0, time.Local)
+				return t.Equal(expected)
+			},
+		},
+		{
+			name:        "invalid keyword",
+			filter:      "yesterday",
+			expectError: true,
+		},
+		{
+			name:        "invalid date format DD-MM-YYYY",
+			filter:      "15-01-2024",
+			expectError: true,
+		},
+		{
+			name:        "incomplete date",
+			filter:      "2024-01",
+			expectError: true,
+		},
+		{
+			name:        "malformed date",
+			filter:      "2024-13-01",
+			expectError: true,
+		},
+		{
+			name:        "invalid date",
+			filter:      "not-a-date",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			startTime, isSingleDay, err := parseDateFilter(tt.filter)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			if isSingleDay != tt.expectSingle {
+				t.Errorf("expected isSingleDay=%v, got %v", tt.expectSingle, isSingleDay)
+			}
+
+			if tt.validateStart != nil && !tt.validateStart(startTime) {
+				t.Errorf("start time validation failed for %v", startTime)
+			}
+		})
+	}
+}
+
+func TestGetCompletedTodos_SingleDayFiltering(t *testing.T) {
+	// Test that single-day filtering properly excludes todos from the next day
+	// Use Local timezone to match the filtering logic in getCompletedTodos
+	jan15Start := time.Date(2024, 1, 15, 0, 0, 0, 0, time.Local)
+	jan15Mid := time.Date(2024, 1, 15, 12, 0, 0, 0, time.Local)
+	jan16Start := time.Date(2024, 1, 16, 0, 0, 1, 0, time.Local)
+	jan16Mid := time.Date(2024, 1, 16, 12, 0, 0, 0, time.Local)
+
+	mockOutputWithMultipleDays := fmt.Sprintf(`[
+		{"name":"Task 1","status":"completed","completionDate":"%s"},
+		{"name":"Task 2","status":"completed","completionDate":"%s"},
+		{"name":"Task 3","status":"completed","completionDate":"%s"},
+		{"name":"Task 4","status":"completed","completionDate":"%s"}
+	]`, jan15Start.Format(time.RFC3339), jan15Mid.Format(time.RFC3339),
+		jan16Start.Format(time.RFC3339), jan16Mid.Format(time.RFC3339))
+
+	tests := []struct {
+		name        string
+		dateFilter  string
+		mockOutputs []string
+		expectCount int
+		expectNames []string
+	}{
+		{
+			name:        "specific date filters next day",
+			dateFilter:  "2024-01-15",
+			mockOutputs: []string{"SUCCESS", mockOutputWithMultipleDays},
+			expectCount: 2,
+			expectNames: []string{"Task 1", "Task 2"},
+		},
+		{
+			name:        "keyword filter includes all",
+			dateFilter:  "today",
+			mockOutputs: []string{"SUCCESS", mockOutputWithMultipleDays},
+			expectCount: 4, // Keywords don't filter by end date
+			expectNames: []string{"Task 1", "Task 2", "Task 3", "Task 4"},
+		},
+		{
+			name:        "different specific date",
+			dateFilter:  "2024-01-16",
+			mockOutputs: []string{"SUCCESS", mockOutputWithMultipleDays},
+			expectCount: 2,
+			expectNames: []string{"Task 3", "Task 4"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutorMulti(tt.mockOutputs, []error{nil, nil})
+			defer cleanup()
+
+			result, err := getCompletedTodos(tt.dateFilter)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(result) != tt.expectCount {
+				t.Errorf("expected %d todos, got %d", tt.expectCount, len(result))
+				for i, todo := range result {
+					t.Logf("  todo %d: %s (completed: %v)", i, todo.Name, todo.CompletionDate)
+				}
+			}
+
+			for i, expectedName := range tt.expectNames {
+				if i >= len(result) {
+					t.Errorf("missing todo at index %d (expected %q)", i, expectedName)
+					continue
+				}
+				if result[i].Name != expectedName {
+					t.Errorf("todo %d: expected name %q, got %q", i, expectedName, result[i].Name)
+				}
+			}
+		})
 	}
 }

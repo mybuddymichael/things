@@ -385,6 +385,27 @@ func calculateStartDate(filter string) time.Time {
 	}
 }
 
+// parseDateFilter parses a date filter string and returns the start time and whether it represents a single day
+// Returns: (startTime, isSingleDay, error)
+// - For keywords like "today", "this week", "this month": returns (start of period, false, nil)
+// - For YYYY-MM-DD dates: returns (midnight of that day, true, nil)
+func parseDateFilter(filter string) (time.Time, bool, error) {
+	// Check if it's a keyword
+	if filter == "today" || filter == "this week" || filter == "this month" {
+		return calculateStartDate(filter), false, nil
+	}
+
+	// Try parsing as YYYY-MM-DD
+	t, err := time.Parse("2006-01-02", filter)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("invalid date format: %s", filter)
+	}
+
+	// Set to midnight in local timezone
+	startOfDay := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local)
+	return startOfDay, true, nil
+}
+
 // getCompletedTodos retrieves completed todos from the Logbook filtered by date
 func getCompletedTodos(dateFilter string) ([]Todo, error) {
 	// First, ensure all completed todos are moved to the Logbook
@@ -392,9 +413,35 @@ func getCompletedTodos(dateFilter string) ([]Todo, error) {
 		return nil, err
 	}
 
-	startDate := calculateStartDate(dateFilter)
+	startDate, isSingleDay, err := parseDateFilter(dateFilter)
+	if err != nil {
+		return nil, err
+	}
+
 	startDateISO := startDate.Format(time.RFC3339)
-	return getTodosFromListWithFilter("Logbook", startDateISO)
+	todos, err := getTodosFromListWithFilter("Logbook", startDateISO)
+	if err != nil {
+		return nil, err
+	}
+
+	// If filtering for a single day, only include todos completed within that specific day
+	if isSingleDay {
+		endOfDay := startDate.AddDate(0, 0, 1) // Midnight of next day in local time
+		var filtered []Todo
+		for _, todo := range todos {
+			if todo.CompletionDate != nil {
+				// Convert completion date to local timezone for comparison
+				completionLocal := todo.CompletionDate.In(time.Local)
+				// Include if completion is on or after startDate AND before endOfDay
+				if !completionLocal.Before(startDate) && completionLocal.Before(endOfDay) {
+					filtered = append(filtered, todo)
+				}
+			}
+		}
+		return filtered, nil
+	}
+
+	return todos, nil
 }
 
 // getCompletedTodosFiltered retrieves completed todos with optional area/project filters

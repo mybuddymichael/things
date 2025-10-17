@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/urfave/cli/v3"
 )
@@ -225,7 +226,7 @@ func main() {
 					&cli.StringFlag{
 						Name:        "date",
 						Aliases:     []string{"d"},
-						Usage:       "show completed to-dos from `TIMEFRAME` (today, this week, this month)",
+						Usage:       "show completed to-dos from `TIMEFRAME` (today, this week, this month) or a specific date (YYYY-MM-DD)",
 						Required:    true,
 						Destination: &dateFilter,
 					},
@@ -248,9 +249,12 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// Validate date filter
+					// Validate date filter - accept keywords or YYYY-MM-DD format
 					if dateFilter != "today" && dateFilter != "this week" && dateFilter != "this month" {
-						return cli.Exit("ERROR: --date must be one of: today, this week, this month", 1)
+						// Try parsing as YYYY-MM-DD date
+						if _, err := time.Parse("2006-01-02", dateFilter); err != nil {
+							return cli.Exit("ERROR: --date must be one of: today, this week, this month, or a date in YYYY-MM-DD format", 1)
+						}
 					}
 
 					todos, err := getCompletedTodosFiltered(dateFilter, areaFilter, projectFilter)

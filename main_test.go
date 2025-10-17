@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urfave/cli/v3"
 )
@@ -278,8 +279,12 @@ func createTestAppWithWriters(writer, errWriter io.Writer) *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
+					// Validate date filter - accept keywords or YYYY-MM-DD format
 					if dateFilter != "today" && dateFilter != "this week" && dateFilter != "this month" {
-						return cli.Exit("ERROR: --date must be one of: today, this week, this month", 1)
+						// Try parsing as YYYY-MM-DD date
+						if _, err := time.Parse("2006-01-02", dateFilter); err != nil {
+							return cli.Exit("ERROR: --date must be one of: today, this week, this month, or a date in YYYY-MM-DD format", 1)
+						}
 					}
 					todos, err := getCompletedTodosFiltered(dateFilter, areaFilter, projectFilter)
 					if err != nil {
@@ -734,6 +739,84 @@ func TestLogCommand_InvalidDateFilter(t *testing.T) {
 		}
 	} else {
 		t.Errorf("expected cli.ExitCoder, got %T", err)
+	}
+}
+
+func TestLogCommand_WithSpecificDate(t *testing.T) {
+	mockOutput := `[{"name":"Task from specific date","status":"completed","completionDate":"2024-01-15T10:00:00Z"}]`
+
+	tests := []struct {
+		name string
+		date string
+	}{
+		{
+			name: "log with YYYY-MM-DD date",
+			date: "2024-01-15",
+		},
+		{
+			name: "log with different date",
+			date: "2023-12-25",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Mock both logCompletedNow() and getTodosFromListWithFilter() calls
+			cleanup := setupMockExecutorIntegrationMulti([]string{"SUCCESS", mockOutput}, []error{nil, nil})
+			defer cleanup()
+
+			app := createTestApp()
+			err := app.Run(context.Background(), []string{"things", "log", "--date", tt.date})
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestLogCommand_InvalidDateFormat(t *testing.T) {
+	tests := []struct {
+		name       string
+		dateFilter string
+	}{
+		{
+			name:       "invalid keyword",
+			dateFilter: "yesterday",
+		},
+		{
+			name:       "invalid date format",
+			dateFilter: "15-01-2024",
+		},
+		{
+			name:       "incomplete date",
+			dateFilter: "2024-01",
+		},
+		{
+			name:       "malformed date",
+			dateFilter: "2024-13-01",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupMockExecutorIntegration("", nil)
+			defer cleanup()
+
+			app := createTestApp()
+			err := app.Run(context.Background(), []string{"things", "log", "--date", tt.dateFilter})
+
+			if err == nil {
+				t.Error("expected error for invalid date filter")
+			}
+
+			if exitErr, ok := err.(cli.ExitCoder); ok {
+				if exitErr.ExitCode() != 1 {
+					t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
+				}
+			} else {
+				t.Errorf("expected cli.ExitCoder, got %T", err)
+			}
+		})
 	}
 }
 
