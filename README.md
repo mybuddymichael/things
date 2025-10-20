@@ -1,11 +1,11 @@
-# things-cli
+# things
 
 A command-line interface for interacting with [Things.app](https://culturedcode.com/things/) tasks.
 
 ## Installation
 
 ```bash
-go install github.com/mybuddymichael/things-cli@latest
+go install github.com/mybuddymichael/things@latest
 ```
 
 ## Commands
