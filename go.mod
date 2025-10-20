@@ -1,4 +1,4 @@
-module things
+module github.com/mybuddymichael/things-cli
 
 go 1.25.0
 
