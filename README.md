@@ -4,6 +4,8 @@ A command-line interface for interacting with [Things.app](https://culturedcode.
 
 ## Installation
 
+(This assumes you have Go installed.)
+
 ```bash
 go install github.com/mybuddymichael/things@latest
 ```
